@@ -1,0 +1,3 @@
+-Wall
+-Wextra
+-I/opt/homebrew/include
