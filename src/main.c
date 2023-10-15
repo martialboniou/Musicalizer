@@ -1,114 +1,109 @@
+#include "plug.h"
 #include <assert.h>
-#include <complex.h>
-#include <math.h>
 #include <raylib.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
-#define ARRAY_LEN(xs) sizeof(xs) / sizeof(xs[0])
-#define N 256
+#include <dlfcn.h>
 
-float pi;
-
-float in[N];
-float complex out[N];
-float max_amp;
-
-typedef struct {
-    float left;
-    float right;
-} Frame;
-
-void fft(float in[], size_t stride, float complex out[], size_t n) {
-
-    assert(n > 0);
-    if (n == 1) {
-        out[0] = in[0] + I*in[0];
-        return;
-    }
-
-    // symmetry so half is calculated
-    fft(in, stride * 2, out, n / 2);
-    fft(in + stride, stride * 2, out + n / 2, n / 2);
-
-    for (size_t k = 0; k < n / 2; ++k) {
-        float t = (float)k / n; // 0 <= t <= 1
-        float complex v = cexp(-2 * I * pi * t) * out[k + n / 2];
-        float complex e = out[k];
-        out[k] = e + v;
-        out[k + n / 2] = e - v;
-    }
+char *shift_args(int *argc, char ***argv) {
+    assert(*argc > 0);
+    char *result = (**argv);
+    (*argv) += 1;
+    (*argc) -= 1;
+    return result;
 }
 
-float amp(float complex z) {
-    float a = fabsf(crealf(z));
-    float b = fabsf(cimagf(z));
-    if (a < b)
-        return b;
-    return a;
-}
+const char *libplug_file_name = "libplug.dylib";
+void *libplug = NULL;
+plug_hello_t plug_hello = NULL;
+plug_init_t plug_init = NULL;
+plug_update_t plug_update = NULL;
+Plug plug = {0};
 
-void callback(void *bufferData, unsigned int frames) {
+bool reload_libplug(void) {
+    //if (libplug != NULL)
+    //    dlclose(libplug);
 
-    if (frames < N)
-        return;
-
-    Frame *fs = bufferData;
-
-    for (size_t i = 0; i < frames; ++i) {
-        in[i] = fs[i].left;
+    libplug = dlopen(libplug_file_name, RTLD_LOCAL | RTLD_NOW);
+    if (libplug == NULL) {
+        fprintf(stderr, "ERROR: could not load %s: %s", libplug_file_name,
+                dlerror());
+        return false;
     }
 
-    fft(in, 1, out, N);
-
-    max_amp = 0.0f;
-    for (size_t i = 0; i < frames; ++i) {
-        float a = amp(out[i]);
-        if (max_amp < a)
-            max_amp = a;
+    plug_hello = dlsym(libplug, "plug_hello");
+    if (plug_hello == NULL) {
+        fprintf(stderr, "ERROR: could not find plug_hello symbol in %s: %s",
+                libplug_file_name, dlerror());
+        return false;
     }
+
+    // return true; // test plug_hello only
+
+    plug_init = dlsym(libplug, "plug_init");
+    if (plug_init == NULL) {
+        fprintf(stderr, "ERROR: could not find plug_init symbol in %s: %s",
+                libplug_file_name, dlerror());
+        return false;
+    }
+
+    plug_update = dlsym(libplug, "plug_update");
+    if (plug_update == NULL) {
+        fprintf(stderr, "ERROR: could not find plug_update symbol in %s: %s",
+                libplug_file_name, dlerror());
+        return false;
+    }
+
+    return true;
 }
 
-int main(void) {
-    pi = atan2f(1, 1) * 4; // approx. used in FORTRAN; atanf(1) = π/4
+int main(int argc, char **argv) {
+
+    if (!reload_libplug())
+        return 1;
+
+    libplug = dlopen("libotherplug.dylib", RTLD_LOCAL | RTLD_NOW);
+    plug_hello = dlsym(libplug, "plug_hello");
+    plug_init = dlsym(libplug, "plug_init");
+    plug_update = dlsym(libplug, "plug_update");
+    plug_hello();
+    /* // test plug_hello only
+    libplug = dlopen("libotherplug.dylib", RTLD_NOW);
+    plug_hello = dlsym(libplug, "plug_hello");
+
+    plug_hello();
+
+    if (!reload_libplug())
+        return 1;
+
+    plug_hello();
+
+    return 0;
+    */
+
+    const char *program = shift_args(&argc, &argv);
+
+    // TODO: supply input files via drag&drop
+    if (argc == 0) {
+        fprintf(stderr, "Usage: %s <input>\n", program);
+        fprintf(stderr, "ERROR: no input file is provided\n");
+        return 1;
+    }
+    const char *file_path = shift_args(&argc, &argv);
 
     InitWindow(800, 600, "Musicalizer");
     SetTargetFPS(60);
-
     InitAudioDevice();
-    Music music = LoadMusicStream("Kalaido - Hanging Lanterns.ogg");
-    assert(music.stream.sampleSize == 16);
-    assert(music.stream.channels == 2);
 
-    PlayMusicStream(music);
-    SetMusicVolume(music, 0.5f);
-    AttachAudioStreamProcessor(music.stream, callback);
+    plug_init(&plug, file_path);
 
     while (!WindowShouldClose()) {
-        UpdateMusicStream(music);
-        if (IsKeyPressed(KEY_SPACE)) {
-            if (IsMusicStreamPlaying(music)) {
-                PauseMusicStream(music);
-            } else {
-                ResumeMusicStream(music);
-            }
+        if (IsKeyPressed(KEY_R)) {
+            if (!reload_libplug())
+                return 1;
+            plug_hello(); // TODO: remove me
         }
-
-        int w = GetRenderWidth();
-        int h = GetRenderHeight();
-
-        BeginDrawing();
-        ClearBackground(CLITERAL(Color){0x18, 0x18, 0x18, 0xFF});
-        float cell_width = (float)w / N;
-        for (size_t i = 0; i < N; ++i) {
-            float t = amp(out[i]) / max_amp;
-            DrawRectangle(i * cell_width, h / 2 - h / 2 * t, 1, h / 2 * t, RED);
-        }
-        EndDrawing();
+        plug_update(&plug);
     }
 
     return 0;
