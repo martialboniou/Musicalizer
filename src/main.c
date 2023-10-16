@@ -24,7 +24,7 @@ bool reload_libplug(void) {
     //if (libplug != NULL)
     //    dlclose(libplug);
 
-    libplug = dlopen(libplug_file_name, RTLD_LOCAL | RTLD_NOW);
+    libplug = dlopen(libplug_file_name, RTLD_NOW);
     if (libplug == NULL) {
         fprintf(stderr, "ERROR: could not load %s: %s", libplug_file_name,
                 dlerror());
@@ -62,11 +62,12 @@ int main(int argc, char **argv) {
     if (!reload_libplug())
         return 1;
 
-    libplug = dlopen("libotherplug.dylib", RTLD_LOCAL | RTLD_NOW);
-    plug_hello = dlsym(libplug, "plug_hello");
-    plug_init = dlsym(libplug, "plug_init");
-    plug_update = dlsym(libplug, "plug_update");
-    plug_hello();
+    // libplug = dlopen("libotherplug.dylib", RTLD_LOCAL | RTLD_NOW);
+    // plug_hello = dlsym(libplug, "plug_hello");
+    // plug_init = dlsym(libplug, "plug_init");
+    // plug_update = dlsym(libplug, "plug_update");
+    // plug_hello();
+
     /* // test plug_hello only
     libplug = dlopen("libotherplug.dylib", RTLD_NOW);
     plug_hello = dlsym(libplug, "plug_hello");

@@ -83,6 +83,7 @@ void plug_update(Plug *plug) {
     int h = GetRenderHeight();
 
     BeginDrawing();
+    // ClearBackground(CLITERAL(Color){0xFF, 0xFF, 0xFF, 0xFF});
     ClearBackground(CLITERAL(Color){0x18, 0x18, 0x18, 0xFF});
 
     fft(in, 1, out, N);
