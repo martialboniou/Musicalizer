@@ -52,20 +52,27 @@ void callback(void *bufferData, unsigned int frames) {
     for (size_t i = 0; i < frames; ++i) {
         in[i] = fs[i].left;
     }
-
 }
 
 void plug_hello() { printf("Hello from plugin\n"); }
 
 void plug_init(Plug *plug, const char *file_path) {
-    // pi = atan2f(1, 1) * 4; // approx. used in FORTRAN; atanf(1) = π/4
-
     plug->music = LoadMusicStream(file_path);
     assert(plug->music.stream.sampleSize == 16);
     assert(plug->music.stream.channels == 2);
 
     PlayMusicStream(plug->music);
     SetMusicVolume(plug->music, 0.5f);
+    AttachAudioStreamProcessor(plug->music.stream, callback);
+}
+
+/** TODO: returns Plug* as last track: unused for now */
+void plug_pre_reload(Plug *plug) {
+    (void)(plug); // no warn
+    // DetachAudioStreamProcessor(plug->music.stream, callback);
+}
+
+void plug_post_reload(Plug *plug) {
     AttachAudioStreamProcessor(plug->music.stream, callback);
 }
 
@@ -83,7 +90,6 @@ void plug_update(Plug *plug) {
     int h = GetRenderHeight();
 
     BeginDrawing();
-    // ClearBackground(CLITERAL(Color){0xFF, 0xFF, 0xFF, 0xFF});
     ClearBackground(CLITERAL(Color){0x18, 0x18, 0x18, 0xFF});
 
     fft(in, 1, out, N);
@@ -98,7 +104,7 @@ void plug_update(Plug *plug) {
     float cell_width = (float)w / N;
     for (size_t i = 0; i < N; ++i) {
         float t = amp(out[i]) / max_amp;
-        DrawRectangle(i * cell_width, h / 2 - h / 2 * t, 1, h / 2 * t, RED);
+        DrawRectangle(i * cell_width, h / 2 - h / 2 * t, 1, h / 2 * t, YELLOW);
     }
     EndDrawing();
 }
