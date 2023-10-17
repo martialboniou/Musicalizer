@@ -15,13 +15,22 @@ char *shift_args(int *argc, char ***argv) {
 
 const char *libplug_file_name = "libplug.dylib";
 void *libplug = NULL;
-plug_hello_t plug_hello = NULL;
-plug_init_t plug_init = NULL;
-plug_pre_reload_t plug_pre_reload = NULL;
-plug_post_reload_t plug_post_reload = NULL;
-plug_update_t plug_update = NULL;
+
+#ifdef HOTRELOAD
+#define PLUG(name) name##_t *name = NULL;
+// eg: `plug_init_t *plug_init = NULL;` from PLUG(plug_init) in LIST_OF_PLUGS
+//     w/ `typedef void (plug_init_t)(Plug *p, const char *fp)` (BEWARE: no *)
+#else
+#define PLUG(name) name##_t name;
+#endif
+LIST_OF_PLUGS
+#undef PLUG
+// - LIST_OF_PLUGS
+// - #undef PLUG
+
 Plug plug = {0};
 
+#ifdef HOTRELOAD
 bool reload_libplug(void) {
     // if (libplug != NULL)
     //     dlclose(libplug);
@@ -33,72 +42,26 @@ bool reload_libplug(void) {
         return false;
     }
 
-    plug_hello = dlsym(libplug, "plug_hello");
-    if (plug_hello == NULL) {
-        fprintf(stderr, "ERROR: could not find plug_hello symbol in %s: %s",
-                libplug_file_name, dlerror());
-        return false;
+#define PLUG(name)                                                             \
+    name = dlsym(libplug, #name);                                              \
+    if (name == NULL) {                                                        \
+        fprintf(stderr, "ERROR: could not find %s symbol in %s: %s", #name,    \
+                libplug_file_name, dlerror());                                 \
+        return false;                                                          \
     }
-
-    // return true; // test plug_hello only
-
-    plug_init = dlsym(libplug, "plug_init");
-    if (plug_init == NULL) {
-        fprintf(stderr, "ERROR: could not find plug_init symbol in %s: %s",
-                libplug_file_name, dlerror());
-        return false;
-    }
-
-    plug_pre_reload = dlsym(libplug, "plug_pre_reload");
-    if (plug_pre_reload == NULL) {
-        fprintf(stderr,
-                "ERROR: could not find plug_pre_reload symbol in %s: %s",
-                libplug_file_name, dlerror());
-        return false;
-    }
-
-    plug_post_reload = dlsym(libplug, "plug_post_reload");
-    if (plug_post_reload == NULL) {
-        fprintf(stderr,
-                "ERROR: could not find plug_post_reload symbol in %s: %s",
-                libplug_file_name, dlerror());
-        return false;
-    }
-
-    plug_update = dlsym(libplug, "plug_update");
-    if (plug_update == NULL) {
-        fprintf(stderr, "ERROR: could not find plug_update symbol in %s: %s",
-                libplug_file_name, dlerror());
-        return false;
-    }
+    LIST_OF_PLUGS
+#undef PLUG
 
     return true;
 }
+#else
+#define reload_libplug() true
+#endif
 
 int main(int argc, char **argv) {
 
     if (!reload_libplug())
         return 1;
-
-    // libplug = dlopen("libotherplug.dylib", RTLD_LOCAL | RTLD_NOW);
-    // plug_hello = dlsym(libplug, "plug_hello");
-    // plug_init = dlsym(libplug, "plug_init");
-    // plug_update = dlsym(libplug, "plug_update");
-    // plug_hello();
-
-    /* // test plug_hello only
-    libplug = dlopen("libotherplug.dylib", RTLD_NOW);
-    plug_hello = dlsym(libplug, "plug_hello");
-
-    plug_hello();
-
-    if (!reload_libplug())
-        return 1;
-
-    plug_hello();
-
-    return 0;
-    */
 
     const char *program = shift_args(&argc, &argv);
 

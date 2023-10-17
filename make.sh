@@ -17,4 +17,5 @@ else
 
 fi
 clang $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} ./src/plug.c $LIBS
-clang $CFLAGS -o ./build/musicalizer ./src/main.c $LIBS
+# clang $CFLAGS -o ./build/musicalizer ./src/plug.c ./src/main.c $LIBS
+clang $CFLAGS -DHOTRELOAD -o ./build/musicalizer ./src/main.c $LIBS
