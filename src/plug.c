@@ -19,7 +19,8 @@ typedef struct {
 
 Plug *plug = NULL;
 
-float in[N];
+float in1[N];
+float in2[N];
 float complex out[N];
 
 void fft(float in[], size_t stride, float complex out[], size_t n) {
@@ -36,7 +37,7 @@ void fft(float in[], size_t stride, float complex out[], size_t n) {
     fft(in + stride, stride * 2, out + n / 2, n / 2);
 
     for (size_t k = 0; k < n / 2; ++k) {
-        float t = (float)k / n; // 0 <= t <= 1
+        float t = (float)k / n; // normalized
         float complex v = cexp(-2 * I * PI * t) * out[k + n / 2];
         float complex e = out[k];
         out[k] = e + v;
@@ -45,22 +46,24 @@ void fft(float in[], size_t stride, float complex out[], size_t n) {
 }
 
 float amp(float complex z) {
-    float a = fabsf(crealf(z));
-    float b = fabsf(cimagf(z));
-    if (a < b)
-        return b;
-    return a;
+    // float a = fabsf(crealf(z));
+    // float b = fabsf(cimagf(z));
+    // if (a < b)
+    //     return b;
+    // return a;
+    float a = crealf(z);
+    float b = cimagf(z);
+    return logf(a * a + b * b);
 }
 
 void callback(void *bufferData, unsigned int frames) {
 
     // https://cdecl.org/?q=float+%28*fs%29%5B2%5D (ptr of array 2 of float)
-    float(*fs)[plug->music.stream.channels] = bufferData;
+    float(*fs)[2] = bufferData;
 
     for (size_t i = 0; i < frames; ++i) {
-        // in[i] = fs[i].left;
-        memmove(in, in + 1, (N - 1) * sizeof(in[0]));
-        in[N - 1] = fs[i][0];
+        memmove(in1, in1 + 1, (N - 1) * sizeof(in1[0]));
+        in1[N - 1] = fs[i][0]; // left output only (for now!)
     }
 }
 
@@ -158,7 +161,14 @@ void plug_update() {
     ClearBackground(CLITERAL(Color){0x18, 0x18, 0x18, 0xFF});
 
     if (IsMusicReady(plug->music)) {
-        fft(in, 1, out, N);
+        // Hann function to smoothen the input (it enhances the output)
+        for (size_t i = 0; i < N; ++i) {
+            float t = (float)i / N; // N ~= N - 1 so close enough to the formula
+            float hann = 0.5 - 0.5 * cosf(2 * PI * t);
+            in2[i] = in1[i] * hann;
+        }
+
+        fft(in2, 1, out, N);
 
         float max_amp = 0.0f;
         for (size_t i = 0; i < N; ++i) {
@@ -168,25 +178,27 @@ void plug_update() {
         }
 
         float step = 1.06;
+        float lowf = 1.0f;
         size_t m = 0;
         // start at 20Hz
-        for (float f = 20.0f; (size_t)f < N; f *= step) {
+        for (float f = lowf; (size_t)f < N / 2; f = ceilf(f * step)) {
             m += 1;
         }
 
         float cell_width = (float)w / m;
         m = 0;
-        for (size_t f = 20.0f; (size_t)f < N; f *= step) {
-            float f1 = f * step;
+        for (float f = lowf; (size_t)f < N / 2; f = ceilf(f * step)) {
+            float f1 = ceilf(f * step);
             float a = 0.0f;
-            for (size_t q = (size_t)f; q < N && q < (size_t)f1; ++q) {
-                a += amp(out[q]);
+            for (size_t q = (size_t)f; q < N / 2 && q < (size_t)f1; ++q) {
+                float b = amp(out[q]);
+                if (b > a)
+                    a = b;
             }
-            a /= (size_t)f1 - (size_t)f + 1;
             float t = a / max_amp;
             Color c = ColorAlphaBlend(RED, ColorAlpha(GREEN, t), WHITE);
-            DrawRectangle(m * cell_width, (float)h / 2 - (float)h / 2 * t,
-                          cell_width, (float)h / 2 * t, c);
+            DrawRectangle(m * cell_width, h - (float)h / 2 * t, cell_width,
+                          (float)h / 2 * t, c);
             m += 1;
         }
     } else {

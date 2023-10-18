@@ -7,10 +7,10 @@
 float pi;
 
 void dft(float in[], float complex out[], size_t n) {
-    for (size_t f = 1; f < n; ++f) {
+    for (size_t f = 0; f < n; ++f) {
         out[f] = 0;
         for (size_t i = 0; i < n; ++i) {
-            float t = (float)i / n; // 0 <= t <= 1
+            float t = (float)i / n; // normalized
             out[f] += in[i] * cexp(2 * I * pi * f * t);
         }
     }
@@ -29,7 +29,7 @@ void fft(float in[], size_t stride, float complex out[], size_t n) {
     fft(in + stride, stride * 2, out + n / 2, n / 2);
 
     for (size_t k = 0; k < n / 2; ++k) {
-        float t = (float)k / n; // 0 <= t <= 1
+        float t = (float)k / n; // normalized
         float complex v = cexp(-2 * I * pi * t) * out[k + n / 2];
         float complex e = out[k];
         out[k] = e + v;
@@ -45,7 +45,7 @@ int main() {
     float complex out[n]; // output buffer
 
     for (size_t i = 0; i < n; ++i) {
-        float t = (float)i / n; // 0 <= t <= 1
+        float t = (float)i / n; // normalized
         in[i] = cosf(2 * pi * t) +
                 sinf(2 * pi * t * 2); // wave = offset-1Hz + 2Hz harmonics
     }
