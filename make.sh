@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -xe
 
-CFLAGS="-Wall -Wextra `pkg-config --cflags raylib`"
-LIBS="`pkg-config --libs raylib` -L/opt/homebrew/lib -lm -ldl -lpthread"
+# -Wall -Wextra
+CFLAGS="`pkg-config --cflags raylib`"
+LIBS="`pkg-config --libs raylib` -L/opt/homebrew/lib -ldl -lpthread"
 
 VER=`(cat VERSION)`
 MAJOR=`(cut -d . -f 1 VERSION)`
@@ -16,6 +17,17 @@ else
     SOFLAGS="-shared -Wl,-soname,libderp.so.$MAJOR.$MINOR"
 
 fi
-clang $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} ./src/plug.c $LIBS
-# clang $CFLAGS -o ./build/musicalizer ./src/plug.c ./src/main.c $LIBS
-clang $CFLAGS -DHOTRELOAD -o ./build/musicalizer ./src/main.c $LIBS
+
+
+read -p "Do you want to debug this program? "
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    DBG_OPTIONS="-g"
+fi
+# TODO: zsh version
+#if read -q "choice?Do you want to debug this program? "; then
+#    DBG_OPTIONS="-g"
+#fi
+
+clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} ./src/plug.c $LIBS
+# clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer ./src/plug.c ./src/main.c $LIBS
+clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer ./src/main.c $LIBS
