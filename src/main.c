@@ -5,14 +5,6 @@
 
 #include <dlfcn.h>
 
-// char *shift_args(int *argc, char ***argv) {
-//     assert(*argc > 0);
-//     char *result = (**argv);
-//     (*argv) += 1;
-//     (*argc) -= 1;
-//     return result;
-// }
-
 const char *libplug_file_name = "libplug.dylib";
 void *libplug = NULL;
 
@@ -60,16 +52,8 @@ int main() {
     if (!reload_libplug())
         return 1;
 
-    // const char *program = shift_args(&argc, &argv);
-
-    // if (argc == 0) {
-    //     fprintf(stderr, "Usage: %s <input>\n", program);
-    //     fprintf(stderr, "ERROR: no input file is provided\n");
-    //     return 1;
-    // }
-    // const char *file_path = shift_args(&argc, &argv);
-
     size_t factor = 60;
+    SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(factor*16, factor*9, "Musicalizer");
     SetTargetFPS(60);
     InitAudioDevice();

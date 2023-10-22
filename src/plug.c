@@ -191,13 +191,23 @@ void plug_update() {
         // display the frequencies
         float cell_width = (float)w / m;
         for (size_t i = 0; i < m; ++i) {
-            float hue = (float)i/m;
             float t = out_smooth[i];
+            float hue = (float)i/m;
             float saturation = 0.75f;
             float value = 1.0f;
             Color color = ColorFromHSV(hue*360, saturation, value);
-            DrawRectangle(i * cell_width, h - (float)h * 2 / 3 * t, ceil(cell_width),
-                          (float)h * 2 / 3 * t, color);
+            Vector2 startPos = {
+                i*cell_width + cell_width / 2,
+                h - h*2/3*t,
+            };
+            Vector2 endPos = {
+                i*cell_width + cell_width / 2,
+                h ,
+            };
+            float thick = cell_width/2*sqrt(t);
+            float radius = cell_width*1.5*sqrt(t);
+            DrawLineEx(startPos, endPos, thick, color);
+            DrawCircleV(startPos, radius, color);
         }
     } else {
         const char *label;
