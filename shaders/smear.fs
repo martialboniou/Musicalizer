@@ -11,7 +11,7 @@ varying vec4 fragColor;
 // gl_FragColor is our output fragment color
 
 void main() {
-    float r = 0.1;
+    float r = 0.25;
     vec2 p = fragTexCoord - vec2(0.5);
     float len = length(p);
     if (len <= 0.5) {
@@ -20,7 +20,7 @@ void main() {
             gl_FragColor = fragColor;
         } else {
             float t = 1.0 - s / (0.5 - r);
-            gl_FragColor = vec4(fragColor.xyz, t * t * t * t);
+            gl_FragColor = vec4(fragColor.xyz, t);
         }
     } else {
         gl_FragColor = vec4(0);
@@ -36,7 +36,7 @@ in vec4 fragColor
 out vec4 finalColor;
 
 void main() {
-    float r = 0.1;
+    float r = 0.25;
     vec2 p = fragTexCoord - vec2(0.5);
     if (length(p) <= 0.5) {
         float s = length(p) - r;
@@ -44,10 +44,11 @@ void main() {
             finalColor = fragColor;
         } else {
             float t = 1 - s / (0.5 - r);
-            finalColor = vec4(fragColor.xyz, t * t * t * t);
+            finalColor = vec4(fragColor.xyz, t);
         }
     } else {
         finalColor = vec4(0);
     }
 }
 */
+

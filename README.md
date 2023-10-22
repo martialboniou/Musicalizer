@@ -6,6 +6,8 @@ This version is aimed to work on macOS (for now; tested on 13+). The shared
 library version is untested (I'll check on Linux later; I recommend to check
 the original version [here](https://github.com/tsoding/musializer)).
 
+![Example of display](./resources/images/musicalizer_by_tsoding_macos_version.png "Example of display (WIP)")
+
 For now, the **hot reloading** works while compiling the dynamic library
 properly (no need to `codesign` by the way). For example:
 - change the `exec.sh` path to the audio file (`flac` unsupported)
@@ -23,7 +25,8 @@ As OpenGL is deprecated, and Metal is way faster, you will have to compile
 the linkage will be made in the `./make.sh`; you just need a Google Chrome
 installed or the libaries `libEGL.dylib` and `libGLESv2.dylib` manually
 installed in the `./build` directory: check
-[here](https://github.com/grplyler/raylib-articles#3-quickstart-short-version-using-angle-from-your-browser)
+[here](https://github.com/grplyler/raylib-articles#3-quickstart-short-version-using-angle-from-your-browser).
+
 So, **first**, ensure `raylib` has been compiled with `GRAPHICS_API_OPENGL_ES`:
 
 ```sh
