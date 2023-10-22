@@ -18,5 +18,28 @@ properly (no need to `codesign` by the way). For example:
 it will load the newest version of the plugin (and thus, change the color if
 you did so in `plug.c`)
 
+As OpenGL is deprecated, and Metal is way faster, you will have to compile
+`raylib` for the web platform GL ES in order to enable the **shaders** on macOS;
+the linkage will be made in the `./make.sh`; you just need a Google Chrome
+installed or the libaries `libEGL.dylib` and `libGLESv2.dylib` manually
+installed in the `./build` directory: check
+[here](https://github.com/grplyler/raylib-articles#3-quickstart-short-version-using-angle-from-your-browser)
+So, **first**, ensure `raylib` has been compiled with `GRAPHICS_API_OPENGL_ES`:
+
+```sh
+# use me in raylib/src
+
+make PLATFORM=PLATFORM_DESKTOP RAYLIB_LIBTYPE=SHARED GRAPHICS=GRAPHICS_API_OPENGL_ES && \
+    mkdir -p $HOME/.local/{include,lib};\
+    cp -a raylib.h raymath.h rlgl.h $HOME/.local/include &&\
+    cp -a libraylib* $HOME/.local/lib
+```
+
+Beware, you must use: `#version 100` for your `./shaders/circle.fs` now,
+instead of the one mentioned in the
+[tutorial](https://www.youtube.com/watch?v=1pqIg-Ug7bU&list=PLpM-Dvs8t0Vak1rrE2NJn8XYEJ5M7-BqT&index=7).
+Check some [examples](https://github.com/raysan5/raylib/blob/master/examples/shaders/resources/shaders/glsl100/bloom.fs)
+of `glsl100` syntax in the raylib source code.
+
 Don't upgrade to Sonoma yet; raylib audio output doesn't work (tested with
-sources too (10/2023))
+homebrew & sources (10/2023))

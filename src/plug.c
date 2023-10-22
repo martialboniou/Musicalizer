@@ -8,12 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <rlgl.h>
+
 #define N (1 << 13)
 #define FONT_SIZE 69
 
 typedef struct {
     Music music;
     Font font;
+    Shader circle;
     bool error;
 } Plug;
 
@@ -72,6 +75,8 @@ void plug_init() {
     plug->font = LoadFontEx("./resources/fonts/Alegreya-Regular.ttf", FONT_SIZE,
                             NULL, 0);
 
+    plug->circle = LoadShader(NULL, "./shaders/circle.fs");
+
     plug->error = false;
 }
 
@@ -88,6 +93,8 @@ void plug_post_reload(void *prev) {
     if (IsMusicReady(plug->music)) {
         AttachAudioStreamProcessor(plug->music.stream, callback);
     }
+    UnloadShader(plug->circle);
+    plug->circle = LoadShader(NULL, "./shaders/circle.fs");
 }
 
 void plug_update() {
@@ -149,7 +156,7 @@ void plug_update() {
     float dt = GetFrameTime();
 
     BeginDrawing();
-    ClearBackground(CLITERAL(Color){0x18, 0x18, 0x18, 0xFF});
+    ClearBackground(CLITERAL(Color){0x15, 0x15, 0x15, 0xFF});
 
     if (IsMusicReady(plug->music)) {
         // Hann function to smoothen the input (it enhances the output)
@@ -188,27 +195,50 @@ void plug_update() {
             out_smooth[i] += (out_log[i] - out_smooth[i]) * smoothness * dt;
         }
 
-        // display the frequencies
         float cell_width = (float)w / m;
+
+        // display the bars
         for (size_t i = 0; i < m; ++i) {
             float t = out_smooth[i];
-            float hue = (float)i/m;
+            float hue = (float)i / m;
             float saturation = 0.75f;
             float value = 1.0f;
-            Color color = ColorFromHSV(hue*360, saturation, value);
+            Color color = ColorFromHSV(hue * 360, saturation, value);
             Vector2 startPos = {
-                i*cell_width + cell_width / 2,
-                h - h*2/3*t,
+                i * cell_width + cell_width / 2,
+                h - (float)h * 2 / 3 * t,
             };
             Vector2 endPos = {
-                i*cell_width + cell_width / 2,
-                h ,
+                i * cell_width + cell_width / 2,
+                h,
             };
-            float thick = cell_width/2*sqrt(t);
-            float radius = cell_width*1.5*sqrt(t);
+            float thick = cell_width / 2 * sqrt(t);
             DrawLineEx(startPos, endPos, thick, color);
-            DrawCircleV(startPos, radius, color);
         }
+
+        Texture2D texture = {rlGetTextureIdDefault(), 1, 1, 1,
+                             PIXELFORMAT_UNCOMPRESSED_R8G8B8};
+
+        // display the circles
+        BeginShaderMode(plug->circle);
+        for (size_t i = 0; i < m; ++i) {
+            float t = out_smooth[i];
+            float hue = (float)i / m;
+            float saturation = 0.75f;
+            float value = 1.0f;
+            Color color = ColorFromHSV(hue * 360, saturation, value);
+            Vector2 center = {
+                i * cell_width + cell_width / 2,
+                h - (float)h * 2 / 3 * t,
+            };
+            float radius = cell_width * 8 * sqrtf(t); // wider; * 1.5 before
+            Vector2 position = {
+                .x = center.x - radius,
+                .y = center.y - radius,
+            };
+            DrawTextureEx(texture, position, 0, 2 * radius, color);
+        }
+        EndShaderMode();
     } else {
         const char *label;
         Color color;

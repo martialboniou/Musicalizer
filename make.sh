@@ -16,19 +16,32 @@ MINOR=`(cut -d . -f 2 VERSION)`
 if [ "$(uname -s)" = Darwin ]; then
     SO=dylib
     SOFLAGS="-dynamiclib -install_name libplug.${MAJOR}.dylib -current_version ${VER} -compatibility_version ${MAJOR}.${MINOR}.0"
+    # ANGLE (Google Chrome required)
+    if [[ ! -x "./build/libEGL.dylib" || ! -x "./build/libGLESv2.dylib" ]]; then
+
+        ANGLE_EGL_LIB=`find /Applications/Google\ Chrome.app -name 'libEGL.dylib' | tail -1`
+        ANGLE_GLES_LIB=`find /Applications/Google\ Chrome.app -name 'libGLESv2.dylib' | tail -1`
+
+        if [ "${ANGLE_EGL_LIB}" = "" || "${ANGLE_GLES_LIB}" = ""]; then
+            exit 1 # won't be able to link Angle to use the GL Shaders (mandatory on aarch)
+        else
+            cp "${ANGLE_EGL_LIB}" ./build/libEGL.dylib
+            cp "${ANGLE_GLES_LIB}" ./build/libGLESv2.dylib
+        fi
+    fi
+    ANGLE_LIBS="./build/libEGL.dylib ./build/libGLESv2.dylib"
 else
     SO=so
     SOFLAGS="-shared -Wl,-soname,libderp.so.$MAJOR.$MINOR"
 
 fi
 
-
 #read -p "Do you want to debug this program? "
 #if [[ $REPLY =~ ^[Yy]$ ]]; then
 #    DBG_OPTIONS="-g"
 #fi
 
-clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} ./src/plug.c $LIBS
+clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} ./src/plug.c $LIBS $ANGLE_LIBS
 # clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer ./src/plug.c ./src/main.c $LIBS
 clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer ./src/main.c $LIBS
 
