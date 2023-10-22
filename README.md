@@ -17,3 +17,6 @@ properly (no need to `codesign` by the way). For example:
 - type the `r` key as set on a QWERTY layout (`p` on Dvorak)
 it will load the newest version of the plugin (and thus, change the color if
 you did so in `plug.c`)
+
+Don't upgrade to Sonoma yet; raylib audio output doesn't work (tested with
+sources too (10/2023))

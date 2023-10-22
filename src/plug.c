@@ -19,9 +19,11 @@ typedef struct {
 
 Plug *plug = NULL;
 
-float in1[N];
-float in2[N];
-float complex out[N];
+float in_raw[N];
+float in_win[N];
+float complex out_raw[N];
+float out_log[N];
+float out_smooth[N];
 
 void fft(float in[], size_t stride, float complex out[], size_t n) {
 
@@ -46,11 +48,6 @@ void fft(float in[], size_t stride, float complex out[], size_t n) {
 }
 
 float amp(float complex z) {
-    // float a = fabsf(crealf(z));
-    // float b = fabsf(cimagf(z));
-    // if (a < b)
-    //     return b;
-    // return a;
     float a = crealf(z);
     float b = cimagf(z);
     return logf(a * a + b * b);
@@ -62,8 +59,8 @@ void callback(void *bufferData, unsigned int frames) {
     float(*fs)[2] = bufferData;
 
     for (size_t i = 0; i < frames; ++i) {
-        memmove(in1, in1 + 1, (N - 1) * sizeof(in1[0]));
-        in1[N - 1] = fs[i][0]; // left output only (for now!)
+        memmove(in_raw, in_raw + 1, (N - 1) * sizeof(in_raw[0]));
+        in_raw[N - 1] = fs[i][0]; // left output only (for now!)
     }
 }
 
@@ -76,13 +73,6 @@ void plug_init() {
                             NULL, 0);
 
     plug->error = false;
-
-    // plug->music = LoadMusicStream(file_path);
-    // assert(plug->music.stream.channels == 2);
-
-    // SetMusicVolume(plug->music, 0.5f);
-    // AttachAudioStreamProcessor(plug->music.stream, callback);
-    // PlayMusicStream(plug->music);
 }
 
 /** TODO: returns Plug* as last track: unused for now */
@@ -156,6 +146,7 @@ void plug_update() {
 
     int w = GetRenderWidth();
     int h = GetRenderHeight();
+    float dt = GetFrameTime();
 
     BeginDrawing();
     ClearBackground(CLITERAL(Color){0x18, 0x18, 0x18, 0xFF});
@@ -163,43 +154,50 @@ void plug_update() {
     if (IsMusicReady(plug->music)) {
         // Hann function to smoothen the input (it enhances the output)
         for (size_t i = 0; i < N; ++i) {
-            float t = (float)i / N; // N ~= N - 1 so close enough to the formula
+            float t = (float)i / (N - 1);
             float hann = 0.5 - 0.5 * cosf(2 * PI * t);
-            in2[i] = in1[i] * hann;
+            in_win[i] = in_raw[i] * hann;
         }
 
-        fft(in2, 1, out, N);
+        fft(in_win, 1, out_raw, N);
 
-        float max_amp = 0.0f;
-        for (size_t i = 0; i < N; ++i) {
-            float a = amp(out[i]);
-            if (max_amp < a)
-                max_amp = a;
-        }
-
-        float step = 1.06;
+        float step = 1.06f;
         float lowf = 1.0f;
         size_t m = 0;
-        // start at 20Hz
-        for (float f = lowf; (size_t)f < N / 2; f = ceilf(f * step)) {
-            m += 1;
-        }
-
-        float cell_width = (float)w / m;
-        m = 0;
+        float max_amp = 1.0f;
         for (float f = lowf; (size_t)f < N / 2; f = ceilf(f * step)) {
             float f1 = ceilf(f * step);
             float a = 0.0f;
             for (size_t q = (size_t)f; q < N / 2 && q < (size_t)f1; ++q) {
-                float b = amp(out[q]);
+                float b = amp(out_raw[q]);
                 if (b > a)
                     a = b;
             }
-            float t = a / max_amp;
-            Color c = ColorAlphaBlend(RED, ColorAlpha(GREEN, t), WHITE);
-            DrawRectangle(m * cell_width, h - (float)h / 2 * t, cell_width,
-                          (float)h / 2 * t, c);
-            m += 1;
+            if (max_amp < a)
+                max_amp = a;
+            out_log[m++] = a;
+        }
+
+        // normalize frequencies to 0..1 range
+        for (size_t i = 0; i < m; ++i) {
+            out_log[i] /= max_amp;
+        }
+
+        float smoothness = 8;
+        for (size_t i = 0; i < m; ++i) {
+            out_smooth[i] += (out_log[i] - out_smooth[i]) * smoothness * dt;
+        }
+
+        // display the frequencies
+        float cell_width = (float)w / m;
+        for (size_t i = 0; i < m; ++i) {
+            float hue = (float)i/m;
+            float t = out_smooth[i];
+            float saturation = 0.75f;
+            float value = 1.0f;
+            Color color = ColorFromHSV(hue*360, saturation, value);
+            DrawRectangle(i * cell_width, h - (float)h * 2 / 3 * t, ceil(cell_width),
+                          (float)h * 2 / 3 * t, color);
         }
     } else {
         const char *label;
