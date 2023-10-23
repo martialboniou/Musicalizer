@@ -46,3 +46,32 @@ of `glsl100` syntax in the raylib source code.
 
 Don't upgrade to Sonoma yet; raylib audio output doesn't work (tested with
 homebrew & sources (10/2023))
+
+About the [source code](https://github.com/tsoding/rendering-video-in-c-with-ffmpeg/tree/1347d5356987f1d9b131a6c59ab72748599dee7f)
+of the `rendering-video-in-c-with-ffmpeg` by Tsoding, the `raylib` version
+of the code needs this change:
+
+```patch
+@@ -10,7 +10,7 @@
+
+ int main(void)
+ {
+-    int ffmpeg = ffmpeg_start_rendering(WIDTH, HEIGHT, FPS);
++    FFMPEG *ffmpeg = ffmpeg_start_rendering(WIDTH, HEIGHT, FPS);
+
+     InitWindow(WIDTH, HEIGHT, "FFmpeg");
+     SetTargetFPS(FPS);
+```
+
+*REMINDER*: beware of the `ffmpeg` order of options (where `-i` is
+mandatory for the input and `-` is required, just after this, for a
+POSIX *pipe* when sending a data stream);
+it's *chunk*-based command so:
+
+```sh
+ffmpeg [global_options]
+{[input_file_options] -i input_url} ...
+{[input_file_options] -i input_url} ...
+{[input_file_options] -i input_url} ...
+{[output_file_options] -i output_url} ...
+```

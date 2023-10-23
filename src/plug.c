@@ -17,7 +17,8 @@ typedef struct {
     Music music;
     Font font;
     Shader circle;
-    Shader smear;
+    int circle_radius_location;
+    int circle_power_location;
     bool error;
 } Plug;
 
@@ -78,7 +79,8 @@ void plug_init() {
                             NULL, 0);
 
     plug->circle = LoadShader(NULL, "./shaders/circle.fs");
-    plug->smear = LoadShader(NULL, "./shaders/smear.fs");
+    plug->circle_radius_location = GetShaderLocation(plug->circle, "radius");
+    plug->circle_power_location = GetShaderLocation(plug->circle, "power");
 
     plug->error = false;
 }
@@ -98,8 +100,8 @@ void plug_post_reload(void *prev) {
     }
     UnloadShader(plug->circle);
     plug->circle = LoadShader(NULL, "./shaders/circle.fs");
-    UnloadShader(plug->smear);
-    plug->smear = LoadShader(NULL, "./shaders/smear.fs");
+    plug->circle_radius_location = GetShaderLocation(plug->circle, "radius");
+    plug->circle_power_location = GetShaderLocation(plug->circle, "power");
 }
 
 void plug_update() {
@@ -195,14 +197,18 @@ void plug_update() {
             out_log[i] /= max_amp;
         }
 
+        // smooth out and smear the values
         float smoothness = 8;
-        float smearness = 5;
+        float smearness = 3;
         for (size_t i = 0; i < m; ++i) {
             out_smooth[i] += (out_log[i] - out_smooth[i]) * smoothness * dt;
             out_smear[i] += (out_smooth[i] - out_smear[i]) * smearness * dt;
         }
 
+        // width of a single bar
         float cell_width = (float)w / m;
+
+        // global color parameters
         float saturation = 0.75f;
         float value = 1.0f;
 
@@ -229,7 +235,11 @@ void plug_update() {
                              PIXELFORMAT_UNCOMPRESSED_R8G8B8};
 
         // display the smears
-        BeginShaderMode(plug->smear);
+        SetShaderValue(plug->circle, plug->circle_radius_location,
+                       (float[1]){0.3f}, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(plug->circle, plug->circle_power_location,
+                       (float[1]){3.0f}, SHADER_UNIFORM_FLOAT);
+        BeginShaderMode(plug->circle);
         for (size_t i = 0; i < m; ++i) {
             float start = out_smear[i];
             float end = out_smooth[i];
@@ -266,6 +276,10 @@ void plug_update() {
         EndShaderMode();
 
         // display the circles
+        SetShaderValue(plug->circle, plug->circle_radius_location,
+                       (float[1]){0.07f}, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(plug->circle, plug->circle_power_location,
+                       (float[1]){5.0f}, SHADER_UNIFORM_FLOAT);
         BeginShaderMode(plug->circle);
         for (size_t i = 0; i < m; ++i) {
             float t = out_smooth[i];

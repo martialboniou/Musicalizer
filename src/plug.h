@@ -1,10 +1,6 @@
 #ifndef PLUG_H_
 #define PLUG_H_
 
-#include "raylib.h"
-#include <complex.h>
-#include <stddef.h>
-
 #define LIST_OF_PLUGS                                                          \
     PLUG(plug_init, void, void)                                                \
     PLUG(plug_pre_reload, void *, void)                                        \
