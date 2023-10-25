@@ -42,7 +42,8 @@ fi
 #    DBG_OPTIONS="-g"
 #fi
 
-clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} ./src/plug.c $LIBS $ANGLE_LIBS
+clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} \
+    ./src/ffmpeg_linux.c ./src/plug.c $LIBS $ANGLE_LIBS
 # clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer ./src/plug.c ./src/main.c $LIBS
 clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer ./src/main.c $LIBS
 

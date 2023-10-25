@@ -75,3 +75,6 @@ ffmpeg [global_options]
 {[input_file_options] -i input_url} ...
 {[output_file_options] -i output_url} ...
 ```
+
+`ffmpeg.h` and its implementations comes from [here](https://github.com/tsoding/musializer/blob/master/src/ffmpeg.h); 
+here is the [license](https://github.com/tsoding/musializer/blob/master/LICENSE).

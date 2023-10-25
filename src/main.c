@@ -61,7 +61,7 @@ int main() {
     plug_init(); // used the file_path as arg previously
 
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_R)) {
+        if (IsKeyPressed(KEY_H)) {
             void *state = plug_pre_reload();
             if (!reload_libplug())
                 return 1;
