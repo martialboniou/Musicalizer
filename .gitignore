@@ -3,3 +3,9 @@ music/
 !build/.gitignore
 build/
 *.mp4
+!src/test/*.c
+!src/test/*.sh
+!src/test/windows/*.c
+!src/test/windows/*.sh
+!src/test/windows/*.md
+src/test/

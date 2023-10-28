@@ -1,5 +1,10 @@
+# for clangd LSP on NeoVim (TODO: generate the mingw part)
 -Wall
 -Wextra
+# use `x86_64-w64-mingw32-gcc --print-search-dirs` to find the include/ path
+-I/opt/homebrew/Cellar/mingw-w64/11.0.1/toolchain-x86_64/x86_64-w64-mingw32/include
+-Ibuild/raylib/include
 -I~/.local/include
 -I/opt/homebrew/include
 -Isrc
+

@@ -3,7 +3,10 @@
 #include <raylib.h>
 #include <stdio.h>
 
+#ifdef WINDOWS
+#else
 #include <dlfcn.h>
+#endif
 
 const char *libplug_file_name = "libplug.dylib";
 void *libplug = NULL;
