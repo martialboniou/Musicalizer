@@ -1,63 +1,34 @@
-#include "plug.h"
 #include <assert.h>
 #include <raylib.h>
 #include <stdio.h>
 
-#ifdef WINDOWS
-#else
-#include <dlfcn.h>
-#endif
+#include "plug.h"
 
-const char *libplug_file_name = "libplug.dylib";
-void *libplug = NULL;
+#ifndef _WIN32
+#include <signal.h> // needed for sigaction()
+#endif // _WIN32
 
-#ifdef HOTRELOAD
-#define PLUG(name, ...) name##_t *name = NULL;
-// eg: `plug_init_t *plug_init = NULL;`
-#else
-#define PLUG(name, ...) name##_t name;
-#endif
-LIST_OF_PLUGS
-#undef PLUG
-// - LIST_OF_PLUGS
-// - #undef PLUG
-
-#ifdef HOTRELOAD
-bool reload_libplug(void) {
-    // if (libplug != NULL)
-    //     dlclose(libplug);
-
-    libplug = dlopen(libplug_file_name, RTLD_NOW);
-    if (libplug == NULL) {
-        fprintf(stderr, "ERROR: could not load %s: %s", libplug_file_name,
-                dlerror());
-        return false;
-    }
-
-#define PLUG(name, ...)                                                             \
-    name = dlsym(libplug, #name);                                              \
-    if (name == NULL) {                                                        \
-        fprintf(stderr, "ERROR: could not find %s symbol in %s: %s", #name,    \
-                libplug_file_name, dlerror());                                 \
-        return false;                                                          \
-    }
-    LIST_OF_PLUGS
-#undef PLUG
-
-    return true;
-}
-#else
-#define reload_libplug() true
-#endif
+#include "hotreload.h"
+#include "separate_translation_unit_for_miniaudio.h"
 
 int main() {
+#ifndef _WIN32
+    // NOTE: This is needed because if the pipe between this program and FFmpeg
+    // breaks. The program will receive SIGPIPE on trying to write into it.
+    // While such behavior makes sense for command line utilities, this program
+    // is a relatively friendly GUI application that is trying to recover from
+    // such situations.
+    struct sigaction act = {0};
+    act.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &act, NULL);
+#endif // _WIN32
 
     if (!reload_libplug())
         return 1;
 
     size_t factor = 60;
     SetConfigFlags(FLAG_MSAA_4X_HINT);
-    InitWindow(factor*16, factor*9, "Musicalizer");
+    InitWindow(factor * 16, factor * 9, "Musicalizer");
     SetTargetFPS(60);
     InitAudioDevice();
 

@@ -16,7 +16,8 @@ About dylib
 
 For now, the **hot reloading** works while compiling the dynamic library
 properly (no need to `codesign` by the way). For example:
-- change the `exec.sh` path to the audio file (`flac` unsupported)
+- change the `exec.sh` path to the audio file (`flac` is only available if
+you build `raylib` with the flag `SUPPORT_FILEFORMAT_FLAC`)
 - run the program with `exec.sh` (and let it run!)
 - edit `src/plug.c` (say, change the color of a `DrawRectangle`) 
 - run `make.sh` (to recompile the dynamic library; even if in this case,
@@ -149,11 +150,49 @@ Unzip and put the content in `./build/raylib`
 Cross-compilation
 -----------------
 
-WIP
+Run the `make.sh` script like this:
+
+```sh
+DISABLE_WINDOWS_COMPILE=false ./make.sh
+```
+
+As expected, doing so will create  a `PE-32` executable for windows.
 
 Run & Thoughts
 --------------
 
 If you don't have a windows os, use `wine64` to run `./build/musicalizer.exe`.
-Who needs windows? On my Apple Silicon hardware, GLFW crashes.
-I'd try later with an Angle wrapper or something.
+Who needs windows? On my Apple Silicon hardware, GLFW crashes:
+I decided to postpone this issue (TODO: an Angle wrapper or something?).
+
+About miniaudio.h
+=================
+
+Disable the runtime linking on macOS and manually link the frameworks at
+the compilation. Here's what must be added to use `miniaudio.h` properly
+(it might be fixed later; 11/2023):
+
+```c
+#define MINIAUDIO_IMPLEMENTATION
+#ifdef __APPLE__
+    #define MA_NO_RUNTIME_LINKING
+#endif
+```
+
+For example, try:
+
+```sh
+cd ./src/test
+clang -o test_audio_play test_audio_play.c -lpthread -ldl -lm -framework CoreFoundation -framework CoreAudio -framework AudioToolbox
+./test_audio_play
+```
+
+It should play the `sound.wav` file (`ffmpeg -i ../../music/<your file>.ogg sound.wav`)..
+To test the recording functionality, compile and run with these commands (in the
+same directory):
+
+```sh
+clang -o test_audio_rec test_audio_rec.c -lpthread -ldl -lm -framework CoreFoundation -framework CoreAudio -framework AudioToolbox
+./test_audio_rec
+```
+

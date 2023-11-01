@@ -1,20 +1,22 @@
 #include "plug.h"
+#include "ffmpeg.h"
 #include "raylib.h"
+#include "separate_translation_unit_for_miniaudio.h"
 #include <assert.h>
 #include <complex.h>
 #include <math.h>
-#include <stddef.h>
+#include <rlgl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "ffmpeg.h"
-#include <rlgl.h>
+#define GLSL_VERSION 330
 
 #define N (1 << 13)
 #define FONT_SIZE 69
-#define RENDER_FPS 60
-#define RENDER_FACTOR 60
+
+#define RENDER_FPS 30
+#define RENDER_FACTOR 100
 #define RENDER_WIDTH (16 * RENDER_FACTOR)
 #define RENDER_HEIGHT (9 * RENDER_FACTOR)
 
@@ -43,6 +45,10 @@ typedef struct {
     float out_log[N];
     float out_smooth[N];
     float out_smear[N];
+
+    // microphone
+    void *microphone;
+    bool capturing;
 } Plug;
 
 Plug *p = NULL;
@@ -132,8 +138,10 @@ size_t fft_analyze(float dt) {
     float smoothness = 8;
     float smearness = 3;
     for (size_t i = 0; i < m; ++i) {
-        p->out_smooth[i] += (p->out_log[i] - p->out_smooth[i]) * smoothness * dt;
-        p->out_smear[i] += (p->out_smooth[i] - p->out_smear[i]) * smearness * dt;
+        p->out_smooth[i] +=
+            (p->out_log[i] - p->out_smooth[i]) * smoothness * dt;
+        p->out_smear[i] +=
+            (p->out_smooth[i] - p->out_smear[i]) * smearness * dt;
     }
 
     return m;
@@ -160,9 +168,10 @@ void plug_init() {
     memset(p, 0, sizeof(*p)); // fill a block of memory
 
     p->font = LoadFontEx("./resources/fonts/Alegreya-Regular.ttf", FONT_SIZE,
-                            NULL, 0);
+                         NULL, 0);
 
-    p->circle = LoadShader(NULL, "./shaders/circle.fs");
+    p->circle = LoadShader(
+        NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
     p->circle_radius_location = GetShaderLocation(p->circle, "radius");
     p->circle_power_location = GetShaderLocation(p->circle, "power");
 
@@ -172,20 +181,21 @@ void plug_init() {
 }
 
 /** TODO: returns Plug* as last track: unused for now */
-Plug *plug_pre_reload() {
+Plug *plug_pre_reload(void) {
     if (IsMusicReady(p->music)) {
         DetachAudioStreamProcessor(p->music.stream, callback);
     }
     return p;
 }
 
-void plug_post_reload(void *prev) {
+void plug_post_reload(Plug *prev) {
     p = prev;
     if (IsMusicReady(p->music)) {
         AttachAudioStreamProcessor(p->music.stream, callback);
     }
     UnloadShader(p->circle);
-    p->circle = LoadShader(NULL, "./shaders/circle.fs");
+    p->circle = LoadShader(
+        NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
     p->circle_radius_location = GetShaderLocation(p->circle, "radius");
     p->circle_power_location = GetShaderLocation(p->circle, "power");
 }
@@ -263,8 +273,8 @@ void fft_render(size_t w, size_t h, size_t m) {
     EndShaderMode();
 
     // display the circles
-    SetShaderValue(p->circle, p->circle_radius_location,
-                   (float[1]){0.07f}, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(p->circle, p->circle_radius_location, (float[1]){0.07f},
+                   SHADER_UNIFORM_FLOAT);
     SetShaderValue(p->circle, p->circle_power_location, (float[1]){5.0f},
                    SHADER_UNIFORM_FLOAT);
     BeginShaderMode(p->circle);
@@ -288,142 +298,252 @@ void fft_render(size_t w, size_t h, size_t m) {
 
 void plug_update() {
 
-    if (IsFileDropped()) {
-        FilePathList droppedFiles = LoadDroppedFiles();
-        // for (size_t i = 0; i < droppedFiles.count; ++i) {
-        if (droppedFiles.count > 0) {
-            free(p->file_path);
-            p->file_path = strdup(droppedFiles.paths[0]);
-
-            if (IsMusicReady(p->music)) {
-                DetachAudioStreamProcessor(p->music.stream, callback);
-                StopMusicStream(p->music);
-                UnloadMusicStream(p->music);
-            }
-
-            p->music = LoadMusicStream(p->file_path);
-
-            if (IsMusicReady(p->music)) {
-                p->error = false;
-                printf("music.frameCount = %u\n", p->music.frameCount);
-                printf("music.stream.sampleRate = %u\n",
-                       p->music.stream.sampleRate);
-                printf("music.stream.sampleSize = %u\n",
-                       p->music.stream.sampleSize);
-                printf("music.stream.channels = %u\n",
-                       p->music.stream.channels);
-                SetMusicVolume(p->music, 0.5f);
-                AttachAudioStreamProcessor(p->music.stream, callback);
-                PlayMusicStream(p->music);
-            } else {
-                p->error = true;
-            }
-        }
-        UnloadDroppedFiles(droppedFiles);
-    }
+    int w = GetRenderWidth();
+    int h = GetRenderHeight();
 
     BeginDrawing();
-    ClearBackground(CLITERAL(Color){0x15, 0x15, 0x15, 0xFF});
+    ClearBackground(GetColor(0x151515FF));
 
-    if (!p->rendering) {
-        if (IsMusicReady(p->music)) {
-            UpdateMusicStream(p->music);
+    if (!p->rendering) { // preview mode
+        if (p->capturing) {
+            if (p->microphone != NULL) {
+                if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_M)) {
+                    uninit_capture_device(p->microphone);
+                    p->microphone = NULL;
+                    p->capturing = false;
+                }
 
-            if (IsKeyPressed(KEY_SPACE)) {
-                if (IsMusicReady(p->music)) {
+                size_t m = fft_analyze(GetFrameTime());
+                fft_render(w, h, m);
+            } else {
+                if (IsKeyPressed(KEY_ESCAPE)) {
+                    p->capturing = false;
+                }
+
+                const char *label = "Capture Device Error: Check the Logs";
+                Color color = RED;
+                int fontSize = p->font.baseSize;
+                Vector2 size = MeasureTextEx(p->font, label, fontSize, 0);
+                Vector2 position = {
+                    (float)w / 2 - size.x / 2,
+                    (float)h / 2 - size.y / 2,
+                };
+                DrawTextEx(p->font, label, position, fontSize, 0, color);
+
+                label = "(Press ESC to continue)";
+                fontSize = p->font.baseSize * 2 / 3;
+                size = MeasureTextEx(p->font, label, fontSize, 0);
+                position.x = (float)w / 2 - size.x / 2;
+                position.x = (float)w / 2 - size.x / 2;
+                DrawTextEx(p->font, label, position, fontSize, 0, color);
+            }
+
+        } else {
+            if (IsFileDropped()) {
+                FilePathList droppedFiles = LoadDroppedFiles();
+                // for (size_t i = 0; i < droppedFiles.count; ++i) {
+                if (droppedFiles.count > 0) {
+                    free(p->file_path);
+                    p->file_path = strdup(droppedFiles.paths[0]);
+
+                    if (IsMusicReady(p->music)) {
+                        DetachAudioStreamProcessor(p->music.stream, callback);
+                        StopMusicStream(p->music);
+                        UnloadMusicStream(p->music);
+                    }
+
+                    p->music = LoadMusicStream(p->file_path);
+
+                    if (IsMusicReady(p->music)) {
+                        p->error = false;
+                        SetMusicVolume(p->music, 0.5f);
+                        AttachAudioStreamProcessor(p->music.stream, callback);
+                        PlayMusicStream(p->music);
+                    } else {
+                        p->error = true;
+                    }
+                }
+                UnloadDroppedFiles(droppedFiles);
+            }
+
+            if (IsKeyPressed(KEY_M)) {
+                // TODO: let the user choose their mic
+                p->microphone = init_default_capture_device(callback);
+                if (p->microphone != NULL) {
+                    if (!start_capture_device(p->microphone)) {
+                        uninit_capture_device(p->microphone);
+                        p->microphone = NULL;
+                    }
+                }
+                p->capturing = true;
+            }
+
+            if (IsMusicReady(p->music)) { // music loaded and ready
+                UpdateMusicStream(p->music);
+
+                if (IsKeyPressed(KEY_SPACE)) {
                     if (IsMusicStreamPlaying(p->music)) {
                         PauseMusicStream(p->music);
                     } else {
                         ResumeMusicStream(p->music);
                     }
                 }
-            }
 
-            if (IsKeyPressed(KEY_Q)) {
-                if (IsMusicReady(p->music)) {
+                if (IsKeyPressed(KEY_Q)) {
                     StopMusicStream(p->music);
                     PlayMusicStream(p->music);
                 }
-            }
 
-            if (IsKeyPressed(KEY_R)) {
-                fft_clean();
-                p->wave = LoadWave(p->file_path);
-                p->wave_cursor = 0;
-                p->wave_samples = LoadWaveSamples(p->wave);
-                p->ffmpeg = ffmpeg_start_rendering(
-                    p->screen.texture.width, p->screen.texture.height,
-                    RENDER_FPS, p->file_path);
-                p->rendering = true;
-            }
+                if (IsKeyPressed(KEY_F)) {
+                    StopMusicStream(p->music);
 
-            size_t m = fft_analyze(GetFrameTime());
-            fft_render(GetRenderWidth(), GetRenderHeight(), m);
-
-        } else {
-
-            const char *label;
-            Color color;
-            if (p->error) {
-                label = "Could not load file";
-                color = RED;
-            } else {
-                label = "Drag&Drop Music Here";
-                color = WHITE;
-            }
-            Vector2 size =
-                MeasureTextEx(p->font, label, p->font.baseSize, 0);
-            Vector2 position = {
-                (float)GetRenderWidth() / 2 - size.x / 2,
-                (float)GetRenderHeight() / 2 - size.y / 2,
-            };
-            DrawTextEx(p->font, label, position, p->font.baseSize, 0,
-                       color);
-        }
-    } else {
-        if (p->wave_cursor >= p->wave.frameCount && fft_settled()) {
-            ffmpeg_end_rendering(p->ffmpeg);
-            UnloadWave(p->wave);
-            UnloadWaveSamples(p->wave_samples);
-            p->rendering = false;
-        } else {
-
-            const char *label = "Rendering video...";
-            Color color = WHITE;
-            Vector2 size =
-                MeasureTextEx(p->font, label, p->font.baseSize, 0);
-            Vector2 position = {
-                (float)GetRenderWidth() / 2 - size.x / 2,
-                (float)GetRenderHeight() / 2 - size.y / 2,
-            };
-            DrawTextEx(p->font, label, position, p->font.baseSize, 0,
-                       color);
-
-            size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
-            float(*fs)[p->wave.channels] = (void *)p->wave_samples;
-
-            for (size_t i = 0; i < chunk_size; ++i) {
-                if (p->wave_cursor < p->wave.frameCount) {
-                    fft_push(fs[p->wave_cursor][0]);
-                } else {
-                    fft_push(0);
+                    fft_clean();
+                    p->wave = LoadWave(p->file_path);
+                    p->wave_cursor = 0;
+                    p->wave_samples = LoadWaveSamples(p->wave);
+                    p->ffmpeg = ffmpeg_start_rendering(
+                        p->screen.texture.width, p->screen.texture.height,
+                        RENDER_FPS, p->file_path);
+                    p->rendering = true;
+                    SetTraceLogLevel(LOG_WARNING);
                 }
-                p->wave_cursor += 1;
+
+                size_t m = fft_analyze(GetFrameTime());
+                fft_render(w, h, m);
+
+            } else { // waiting for the user to DnD some tracks...
+
+                const char *label;
+                Color color;
+                if (p->error) {
+                    label = "Could not load file";
+                    color = RED;
+                } else {
+                    label = "Drag&Drop Music Here";
+                    color = WHITE;
+                }
+                Vector2 size =
+                    MeasureTextEx(p->font, label, p->font.baseSize, 0);
+                Vector2 position = {
+                    (float)w / 2 - size.x / 2,
+                    (float)h / 2 - size.y / 2,
+                };
+                DrawTextEx(p->font, label, position, p->font.baseSize, 0,
+                           color);
+            }
+        }
+    } else {                     // rendering mode
+        if (p->ffmpeg == NULL) { // starting FFMPEG process has failed
+            if (IsKeyPressed(KEY_ESCAPE)) {
+                SetTraceLogLevel(LOG_INFO);
+                UnloadWave(p->wave);
+                UnloadWaveSamples(p->wave_samples);
+                p->rendering = false;
+                fft_clean();
+                PlayMusicStream(p->music);
             }
 
-            size_t m = fft_analyze(1.0f / RENDER_FPS);
+            const char *label = "FFmpeg Failure: Check the Logs";
+            Color color = RED;
+            int fontSize = p->font.baseSize;
+            Vector2 size = MeasureTextEx(p->font, label, fontSize, 0);
+            Vector2 position = {
+                (float)w / 2 - size.x / 2,
+                (float)h / 2 - size.y / 2,
+            };
+            DrawTextEx(p->font, label, position, fontSize, 0, color);
 
-            BeginTextureMode(p->screen);
-            ClearBackground(CLITERAL(Color){0x15, 0x15, 0x15, 0xFF});
-            fft_render(p->screen.texture.width, p->screen.texture.height,
-                       m);
-            EndTextureMode();
+            label = "(Press ESC to Continue)";
+            fontSize = p->font.baseSize / 2;
+            size = MeasureTextEx(p->font, label, fontSize, 0);
+            position.x = (float)w / 2 - size.x / 2;
+            position.y = (float)h / 2 - size.y / 2 + fontSize;
+            DrawTextEx(p->font, label, position, fontSize, 0, color);
+        } else { // FFMPEG process is going
+            if ((p->wave_cursor >= p->wave.frameCount && fft_settled()) ||
+                IsKeyPressed(KEY_ESCAPE)) {
+                if (!ffmpeg_end_rendering(p->ffmpeg)) {
+                    p->ffmpeg = NULL;
+                } else {
+                    SetTraceLogLevel(LOG_INFO);
+                    UnloadWave(p->wave);
+                    UnloadWaveSamples(p->wave_samples);
+                    p->rendering = false;
+                    fft_clean();
+                    PlayMusicStream(p->music);
+                }
+            } else { // rendering...
 
-            Image image = LoadImageFromTexture(p->screen.texture);
-            ffmpeg_send_frame_flipped(p->ffmpeg, image.data,
-                                      p->screen.texture.width,
-                                      p->screen.texture.height);
-            UnloadImage(image);
+                // label
+                const char *label = "Rendering video...";
+                Color color = WHITE;
+
+                Vector2 size =
+                    MeasureTextEx(p->font, label, p->font.baseSize, 0);
+                Vector2 position = {
+                    (float)w / 2 - size.x / 2,
+                    (float)h / 2 - size.y / 2,
+                };
+                DrawTextEx(p->font, label, position, p->font.baseSize, 0,
+                           color);
+
+                // progress bar
+                float bar_width = (float)w * 2 / 3;
+                float bar_height = p->font.baseSize * 0.25;
+                float bar_progress = (float)p->wave_cursor / p->wave.frameCount;
+                float bar_padding_top = p->font.baseSize * 0.5;
+                if (bar_progress > 1)
+                    bar_progress = 1;
+                float bar_x = (float)w / 2 - bar_width / 2;
+                float bar_y = (float)p->font.baseSize / 2 + bar_padding_top;
+
+                Rectangle bar_filling = {
+                    .x = bar_x,
+                    .y = bar_y,
+                    .width = bar_width * bar_progress,
+                    .height = bar_height,
+                };
+                DrawRectangleRec(bar_filling, WHITE);
+
+                Rectangle bar_box = {
+                    .x = bar_x,
+                    .y = bar_y,
+                    .width = bar_width,
+                    .height = bar_height,
+                };
+                DrawRectangleLinesEx(bar_box, 2, WHITE);
+
+                // rendering
+                size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
+                // https://cdecl.org/?q=float+%28*fs%29%5B2%5D
+                float(*fs)[p->wave.channels] = (void *)p->wave_samples;
+
+                for (size_t i = 0; i < chunk_size; ++i) {
+                    if (p->wave_cursor < p->wave.frameCount) {
+                        fft_push(fs[p->wave_cursor][0]);
+                    } else {
+                        fft_push(0);
+                    }
+                    p->wave_cursor += 1;
+                }
+
+                size_t m = fft_analyze(1.0f / RENDER_FPS);
+
+                BeginTextureMode(p->screen);
+                ClearBackground(GetColor(0x151515FF));
+                fft_render(p->screen.texture.width, p->screen.texture.height,
+                           m);
+                EndTextureMode();
+
+                Image image = LoadImageFromTexture(p->screen.texture);
+                if (!ffmpeg_send_frame_flipped(p->ffmpeg, image.data,
+                                               p->screen.texture.width,
+                                               p->screen.texture.height)) {
+                    ffmpeg_end_rendering(p->ffmpeg);
+                    p->ffmpeg = NULL;
+                }
+                UnloadImage(image);
+            }
         }
     }
 
