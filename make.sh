@@ -51,7 +51,7 @@ if [ $DISABLE_DEBUGGING_NATIVELY != true ]; then
 fi
 
 clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} \
-    ./src/plug.c ./src/ffmpeg_linux.c \
+    ./src/plug.c ./src/ffmpeg.c \
     ./src/separate_translation_unit_for_miniaudio.c \
     $LIBS
 clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer \
@@ -60,7 +60,7 @@ clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer \
     $LIBS
 
 ### the next one is to compile the static library version
-# clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer ./src/ffmpeg_linux.c ./src/plug.c ./src/separate_translation_unit_for_miniaudio.c ./src/main.c $LIBS
+# clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer ./src/ffmpeg.c ./src/plug.c ./src/separate_translation_unit_for_miniaudio.c ./src/main.c $LIBS
 
 ### the next one is to compile for windows (WIP)
 if [ $DISABLE_WINDOWS_COMPILE != true ]; then
@@ -74,7 +74,6 @@ if [ $DISABLE_WINDOWS_COMPILE != true ]; then
             ./src/plug.c ./src/main.c \
             -L./build/raylib/lib \
             -lraylib -lwinmm -lgdi32 \
-            -lopengl32 \
             -static
     fi
 fi

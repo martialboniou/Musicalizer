@@ -1,8 +1,20 @@
 .DS_Store
+*.swp
+# your soundtracks
 music/
+# file output
+*.mp4
+log.txt
+# nob artifact
 !build/.gitignore
 build/
-*.mp4
+nob
+nob.old
+nob.exe
+# zig build (coming soon)
+zig-out/
+zig-cache/
+# tests
 !src/test/*.c
 !src/test/*.sh
 !src/test/windows/*.c

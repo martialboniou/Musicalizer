@@ -10,7 +10,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define READ_END 0
+#define READ_END  0
 #define WRITE_END 1
 
 typedef struct {
@@ -19,7 +19,8 @@ typedef struct {
 } FFMPEG;
 
 FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps,
-                               const char *sound_file_path) {
+                               const char *sound_file_path)
+{
     int pipefd[2];
 
     if (pipe(pipefd) < 0) {
@@ -84,7 +85,8 @@ FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps,
     return ffmpeg;
 }
 
-bool ffmpeg_end_rendering(FFMPEG *ffmpeg) {
+bool ffmpeg_end_rendering(FFMPEG *ffmpeg)
+{
     int pipe = ffmpeg->pipe;
     pid_t pid = ffmpeg->pid;
 
@@ -129,7 +131,8 @@ bool ffmpeg_end_rendering(FFMPEG *ffmpeg) {
 }
 
 bool ffmpeg_send_frame_flipped(FFMPEG *ffmpeg, void *data, size_t width,
-                               size_t height) {
+                               size_t height)
+{
     for (size_t y = height; y > 0; --y) {
         // TODO: write() may not necessarily write the entire row. We may want
         // to repeat the call.

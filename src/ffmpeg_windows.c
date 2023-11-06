@@ -1,7 +1,7 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdbool.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -53,7 +53,8 @@ typedef struct {
 } FFMPEG;
 
 FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps,
-                               const char *sound_file_path) {
+                               const char *sound_file_path)
+{
     HANDLE pipe_read;
     HANDLE pipe_write;
 
@@ -138,7 +139,8 @@ FFMPEG *ffmpeg_start_rendering(size_t width, size_t height, size_t fps,
 }
 
 bool ffmpeg_send_frame_flipped(FFMPEG *ffmpeg, void *data, size_t width,
-                               size_t height) {
+                               size_t height)
+{
     for (size_t y = height; y > 0; --y) {
         // TODO: handle ERROR_IO_PENDING
         if (!WriteFile(ffmpeg->hPipeWrite, (uint32_t *)data + (y - 1) * width,
@@ -153,7 +155,8 @@ bool ffmpeg_send_frame_flipped(FFMPEG *ffmpeg, void *data, size_t width,
     return true;
 }
 
-bool ffmpeg_end_rendering(FFMPEG *ffmpeg) {
+bool ffmpeg_end_rendering(FFMPEG *ffmpeg)
+{
     HANDLE hPipeWrite = ffmpeg->hPipeWrite;
     HANDLE hProcess = ffmpeg->hProcess;
     free(ffmpeg);

@@ -1,2 +1,10 @@
 BasedOnStyle: LLVM
+AlignArrayOfStructures: Right
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossComments: false
+  AcrossEmptyLines: true
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
 IndentWidth: 4

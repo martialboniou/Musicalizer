@@ -13,7 +13,8 @@
 //
 // // gl_FragColor is our output fragment color
 //
-// void main() {
+// void main()
+// {
 //     float r = radius;
 //     vec2 p = fragTexCoord - vec2(0.5);
 //     float len = length(p);
@@ -41,7 +42,8 @@ uniform float power;
 
 out vec4 finalColor;
 
-void main() {
+void main()
+{
     float r = radius;
     vec2 p = fragTexCoord - vec2(0.5);
     if (length(p) <= 0.5) {

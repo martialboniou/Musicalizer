@@ -6,7 +6,8 @@
 
 float pi;
 
-void dft(float in[], float complex out[], size_t n) {
+void dft(float in[], float complex out[], size_t n)
+{
     for (size_t f = 0; f < n; ++f) {
         out[f] = 0;
         for (size_t i = 0; i < n; ++i) {
@@ -16,7 +17,8 @@ void dft(float in[], float complex out[], size_t n) {
     }
 }
 
-void fft(float in[], size_t stride, float complex out[], size_t n) {
+void fft(float in[], size_t stride, float complex out[], size_t n)
+{
 
     assert(n > 0);
     if (n == 1) {
@@ -37,7 +39,8 @@ void fft(float in[], size_t stride, float complex out[], size_t n) {
     }
 }
 
-int main() {
+int main()
+{
     pi = atan2f(1, 1) * 4; // approx. used in FORTRAN; atanf(1) = π/4
 
     size_t n = 64;        // number of samples

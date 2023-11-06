@@ -10,7 +10,8 @@
 #include "miniaudio.h"
 
 void data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
-                   ma_uint32 frameCount) {
+                   ma_uint32 frameCount)
+{
     capture_device_callback2_t *capture_device_callback =
         (capture_device_callback2_t *)pDevice->pUserData;
     assert(capture_device_callback != NULL);
@@ -19,7 +20,8 @@ void data_callback(ma_device *pDevice, void *pOutput, const void *pInput,
 }
 
 Capture_Device *
-init_default_capture_device(capture_device_callback2_t *capture_device_callback) {
+init_default_capture_device(capture_device_callback2_t *capture_device_callback)
+{
     ma_device_config deviceConfig =
         ma_device_config_init(ma_device_type_capture);
     deviceConfig.capture.format = ma_format_f32;
@@ -41,7 +43,8 @@ init_default_capture_device(capture_device_callback2_t *capture_device_callback)
 
 void uninit_capture_device(Capture_Device *device) { ma_device_uninit(device); }
 
-bool start_capture_device(void *device) {
+bool start_capture_device(void *device)
+{
     ma_result result = ma_device_start(device);
     if (result != MA_SUCCESS) {
         printf("Failed to start device.\n");

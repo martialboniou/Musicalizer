@@ -15,7 +15,8 @@ static void *libplug = NULL;
 LIST_OF_PLUGS
 #undef PLUG
 
-bool reload_libplug() {
+bool reload_libplug()
+{
     // if (libplug != NULL)
     //     dlclose(libplug);
 

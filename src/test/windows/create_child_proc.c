@@ -13,7 +13,8 @@
 typedef HANDLE Pid;
 typedef HANDLE Fd;
 
-LPSTR GetLastErrorAsString() {
+LPSTR GetLastErrorAsString()
+{
     DWORD errorMessageId = GetLastError();
     assert(errorMessageId != 0);
 
@@ -28,7 +29,8 @@ LPSTR GetLastErrorAsString() {
     return messageBuffer;
 }
 
-int main() {
+int main()
+{
     STARTUPINFO siStartInfo;
     ZeroMemory(&siStartInfo, sizeof(siStartInfo));
     siStartInfo.cb = sizeof(STARTUPINFO);
@@ -58,13 +60,15 @@ int main() {
     );
 
     if (result == WAIT_FAILED) {
-        fprintf(stderr, "Could not wait on child process: %s\n", GetLastErrorAsString());
+        fprintf(stderr, "Could not wait on child process: %s\n",
+                GetLastErrorAsString());
         return 1;
     }
 
     DWORD exit_status;
     if (GetExitCodeProcess(pid, &exit_status) == 0) {
-        fprintf(stderr, "Could not get process exit code: %lu\n", GetLastError());
+        fprintf(stderr, "Could not get process exit code: %lu\n",
+                GetLastError());
         return 1;
     }
 

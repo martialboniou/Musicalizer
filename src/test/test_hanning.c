@@ -11,7 +11,8 @@
 float in[N];
 float complex out[N];
 
-void dft(float in[], float complex out[], size_t n) {
+void dft(float in[], float complex out[], size_t n)
+{
     for (size_t f = 0; f < n; ++f) {
         out[f] = 0;
         for (size_t i = 0; i < n; ++i) {
@@ -21,7 +22,8 @@ void dft(float in[], float complex out[], size_t n) {
     }
 }
 
-int main() {
+int main()
+{
 
     /* original Hann function */
     // for (size_t i = 0; i < N; ++i) {

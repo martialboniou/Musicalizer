@@ -10,14 +10,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define GLSL_VERSION 330
+#define GLSL_VERSION  330
 
-#define N (1 << 13)
-#define FONT_SIZE 69
+#define N             (1 << 13)
+#define FONT_SIZE     69
 
-#define RENDER_FPS 30
+#define RENDER_FPS    30
 #define RENDER_FACTOR 100
-#define RENDER_WIDTH (16 * RENDER_FACTOR)
+#define RENDER_WIDTH  (16 * RENDER_FACTOR)
 #define RENDER_HEIGHT (9 * RENDER_FACTOR)
 
 typedef struct {
@@ -53,7 +53,8 @@ typedef struct {
 
 Plug *p = NULL;
 
-bool fft_settled() {
+bool fft_settled()
+{
     float eps = 1e-3;
     for (size_t i = 0; i < N; ++i) {
         if (p->out_smooth[i] > eps)
@@ -64,7 +65,8 @@ bool fft_settled() {
     return true;
 }
 
-void fft_clean() {
+void fft_clean()
+{
     memset(p->in_raw, 0, sizeof(p->in_raw));
     memset(p->in_win, 0, sizeof(p->in_win));
     memset(p->out_raw, 0, sizeof(p->out_raw));
@@ -73,7 +75,8 @@ void fft_clean() {
     memset(p->out_smear, 0, sizeof(p->out_smear));
 }
 
-void fft(float in[], size_t stride, float complex out[], size_t n) {
+void fft(float in[], size_t stride, float complex out[], size_t n)
+{
 
     assert(n > 0);
 
@@ -95,13 +98,15 @@ void fft(float in[], size_t stride, float complex out[], size_t n) {
     }
 }
 
-static inline float amp(float complex z) {
+static inline float amp(float complex z)
+{
     float a = crealf(z);
     float b = cimagf(z);
     return logf(a * a + b * b);
 }
 
-size_t fft_analyze(float dt) {
+size_t fft_analyze(float dt)
+{
 
     // Hann function to smoothen the input (it enhances the output)
     for (size_t i = 0; i < N; ++i) {
@@ -147,12 +152,14 @@ size_t fft_analyze(float dt) {
     return m;
 }
 
-void fft_push(float frame) {
+void fft_push(float frame)
+{
     memmove(p->in_raw, p->in_raw + 1, (N - 1) * sizeof(p->in_raw[0]));
     p->in_raw[N - 1] = frame;
 }
 
-void callback(void *bufferData, unsigned int frames) {
+void callback(void *bufferData, unsigned int frames)
+{
 
     // https://cdecl.org/?q=float+%28*fs%29%5B2%5D (ptr of array 2 of float)
     float(*fs)[2] = bufferData;
@@ -162,7 +169,8 @@ void callback(void *bufferData, unsigned int frames) {
     }
 }
 
-void plug_init() {
+void plug_init()
+{
     p = malloc(sizeof(*p));
     assert(p != NULL && "Upgrade your memory!!");
     memset(p, 0, sizeof(*p)); // fill a block of memory
@@ -181,14 +189,16 @@ void plug_init() {
 }
 
 /** TODO: returns Plug* as last track: unused for now */
-Plug *plug_pre_reload(void) {
+Plug *plug_pre_reload(void)
+{
     if (IsMusicReady(p->music)) {
         DetachAudioStreamProcessor(p->music.stream, callback);
     }
     return p;
 }
 
-void plug_post_reload(Plug *prev) {
+void plug_post_reload(Plug *prev)
+{
     p = prev;
     if (IsMusicReady(p->music)) {
         AttachAudioStreamProcessor(p->music.stream, callback);
@@ -200,7 +210,8 @@ void plug_post_reload(Plug *prev) {
     p->circle_power_location = GetShaderLocation(p->circle, "power");
 }
 
-void fft_render(size_t w, size_t h, size_t m) {
+void fft_render(size_t w, size_t h, size_t m)
+{
 
     // width of a single bar
     float cell_width = (float)w / m;
@@ -296,7 +307,8 @@ void fft_render(size_t w, size_t h, size_t m) {
     EndShaderMode();
 }
 
-void plug_update() {
+void plug_update()
+{
 
     int w = GetRenderWidth();
     int h = GetRenderHeight();

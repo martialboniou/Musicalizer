@@ -6,12 +6,13 @@
 
 #ifndef _WIN32
 #include <signal.h> // needed for sigaction()
-#endif // _WIN32
+#endif              // _WIN32
 
 #include "hotreload.h"
 #include "separate_translation_unit_for_miniaudio.h"
 
-int main() {
+int main()
+{
 #ifndef _WIN32
     // NOTE: This is needed because if the pipe between this program and FFmpeg
     // breaks. The program will receive SIGPIPE on trying to write into it.

@@ -11,7 +11,7 @@ bool reload_libplug();
 #define PLUG(name, ...) extern name##_t *name;
 #else
 #define reload_libplug() true
-#define PLUG(name, ...) name##_t name;
+#define PLUG(name, ...)  name##_t name;
 #endif // HOTRELOAD
 LIST_OF_PLUGS
 #undef PLUG
