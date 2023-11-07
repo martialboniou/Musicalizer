@@ -90,6 +90,8 @@ bool build_main_executable(const char *output_path, Target target)
 int main(int argc, char **argv)
 {
 
+    NOB_GO_REBUILD_URSELF(argc, argv);
+
     const char *program = nob_shift_args(&argc, &argv);
 
     if (argc <= 0) {
