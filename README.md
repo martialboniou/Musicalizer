@@ -196,3 +196,29 @@ clang -o test_audio_rec test_audio_rec.c -lpthread -ldl -lm -framework CoreFound
 ./test_audio_rec
 ```
 
+`nob` builder AKA No Build Urself™
+==================================
+
+This part was added during the Music Visualizer part 11, 12 and 13.
+Compile `nob` first:
+
+```sh
+cc -o nob nob.c
+```
+
+You won't need to compile this file again. Run `./nob` with some options
+on your system (here, macOS):
+
+```sh
+./nob config -h
+./nob build
+./exec.sh
+```
+
+You can build for windows (64-bit, btw!):
+
+```sh
+./nob config -t win32
+./nob build
+wine64 ./build/musicalizer.exe
+```

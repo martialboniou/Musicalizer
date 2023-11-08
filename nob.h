@@ -27,9 +27,19 @@
 #ifndef NOB_H_
 #define NOB_H_
 
+#include <ctype.h>
 #define NOB_ASSERT  assert
 #define NOB_REALLOC realloc
 #define NOB_FREE    free
+
+#include <assert.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -42,15 +52,18 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#ifdef __APPLE__
-#include <assert.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdlib.h>
-#endif // __APPLE__
 #endif
+
+#ifdef _WIN32
+#define NOB_LINE_END "\r\n"
+#else
+#define NOB_LINE_END "\n"
+#endif // _WIN32
+
+#define NOB_ARRAY_LEN(array) (sizeof(array) / sizeof(array[0]))
+#define NOB_ARRAY_GET(array, index)                                            \
+    (NOB_ASSERT(index >= 0), NOB_ASSERT(index < NOB_ARRAY_LEN(array)),         \
+     array[index])
 
 typedef enum {
     NOB_INFO,
@@ -81,6 +94,7 @@ bool nob_mkdir_if_not_exists(const char *path);
 bool nob_copy_file(const char *src_path, const char *dst_path);
 bool nob_copy_directory_recursively(const char *src_path, const char *dst_path);
 bool nob_read_entire_dir(const char *parent, Nob_File_Paths *children);
+bool nob_write_entire_file(const char *path, void *data, size_t size);
 Nob_File_Type nob_get_file_type(const char *path);
 
 #define nob_return_defer(value)                                                \
@@ -132,6 +146,8 @@ typedef struct {
     size_t count;
     size_t capacity;
 } Nob_String_Builder;
+
+bool nob_read_entire_file(const char *path, Nob_String_Builder *sb);
 
 // Append a sized buffer to a string builder
 #define nob_sb_append_buf(sb, buf, size) nob_da_append_many(sb, buf, size)
@@ -193,9 +209,6 @@ Nob_Cmd nob_cmd_inline_null(void *first, ...);
 // Free all the memory allocated by command arguments
 #define nob_cmd_free(cmd) NOB_FREE(cmd.items)
 
-// Log the command
-void nob_cmd_log(Nob_Cmd cmd);
-
 // Run command asynchronously
 Nob_Proc nob_cmd_run_async(Nob_Cmd cmd);
 
@@ -213,6 +226,7 @@ void nob_temp_rewind(size_t checkpoint);
 
 int is_path1_modified_after_path2(const char *path1, const char *path2);
 bool nob_rename(const char *old_path, const char *new_path);
+int nob_is_path1_modified_after_path2(const char *path1, const char *path2);
 
 // TODO: add MingGW support for Go Rebuild Urself™ Technology
 // clang-format off
@@ -280,16 +294,36 @@ bool nob_rename(const char *old_path, const char *new_path);
                                                                                \
             Nob_Cmd cmd = {0};                                                 \
             nob_da_append_many(&cmd, argv, argc);                              \
-            nob_cmd_log(cmd);                                                  \
-            if (!nob_cmd_run_sync(cmd)) {                                      \
-                nob_rename(sb.items, binary_path);                             \
+                                                                               \
+            if (!nob_cmd_run_sync(cmd))                                        \
                 exit(1);                                                       \
-            }                                                                  \
                                                                                \
             exit(0);                                                           \
         }                                                                      \
     } while (0)
 // The implementation idea is stolen from https://github.com/zhiayang/nabs
+
+typedef struct {
+    size_t count;
+    const char *data;
+} Nob_String_View;
+
+Nob_String_View nob_sv_chop_by_delim(Nob_String_View *sv, char delim);
+Nob_String_View nob_sv_trim(Nob_String_View sv);
+bool nob_sv_eq(Nob_String_View a, Nob_String_View b);
+Nob_String_View nob_sv_from_cstr(const char *cstr);
+Nob_String_View nob_sv_from_parts(const char *data, size_t count);
+
+// printf macros for Nob_String_View
+#ifndef SV_Fmt
+#define SV_Fmt "%.*s"
+#endif // SV_Fmt
+#ifndef SV_Arg
+#define SV_Arg(sv) (int)(sv).count, (sv).data
+#endif // SV_Arg
+// USAGE:
+//   Nob_String_View name = ...;
+//   printf("Name: `"SV_Fmt"`\n", SV_Arg(name));
 
 // minirent.h HEADER BEGIN ////////////////////////////////////////
 // Copyright 2021 Alexey Kutepov <reximkut@gmail.com>
@@ -472,17 +506,16 @@ void nob_cmd_append_null(Nob_Cmd *cmd, ...)
     va_end(args);
 }
 
-void nob_cmd_log(Nob_Cmd cmd)
-{
-    Nob_String_Builder sb = {0};
-    nob_cmd_render(cmd, &sb);
-    nob_sb_append_null(&sb);
-    nob_log(NOB_INFO, "CMD: %s", sb.items);
-    nob_sb_free(sb);
-}
-
 Nob_Proc nob_cmd_run_async(Nob_Cmd cmd)
 {
+    {
+        Nob_String_Builder sb = {0};
+        nob_cmd_render(cmd, &sb);
+        nob_sb_append_null(&sb);
+        nob_log(NOB_INFO, "CMD: %s", sb.items);
+        nob_sb_free(sb);
+    }
+
 #ifdef _WIN32
     // https://docs.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output
 
@@ -663,6 +696,41 @@ bool nob_read_entire_dir(const char *parent, Nob_File_Paths *children)
 defer:
     if (dir)
         closedir(dir);
+    return result;
+}
+
+bool nob_write_entire_file(const char *path, void *data, size_t size)
+{
+    bool result = true;
+
+    FILE *f = fopen(path, "wb");
+    if (f == NULL) {
+        nob_log(NOB_ERROR, "Could not open file %s for writing: %s\n", path,
+                strerror(errno));
+        nob_return_defer(false);
+    }
+
+    //           len
+    //           v
+    // aaaaaaaaaa
+    //     ^
+    //     data
+
+    char *buf = data;
+    while (size > 0) {
+        size_t n = fwrite(buf, 1, size, f);
+        if (ferror(f)) {
+            nob_log(NOB_ERROR, "Could not write into file %s: %s\n", path,
+                    strerror(errno));
+            nob_return_defer(false);
+        }
+        size -= n;
+        buf += n;
+    }
+
+defer:
+    if (f)
+        fclose(f);
     return result;
 }
 
@@ -884,6 +952,104 @@ Nob_Cmd nob_cmd_inline_null(void *first, ...)
     va_end(args);
 
     return cmd;
+}
+
+bool nob_read_entire_file(const char *path, Nob_String_Builder *sb)
+{
+    bool result = true;
+    size_t buf_size = 32 * 1024;
+    char *buf = NOB_REALLOC(NULL, buf_size);
+    NOB_ASSERT(buf != NULL && "Buy more RAM!!");
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        nob_log(NOB_ERROR, "Could not open %s for reading: %s", path,
+                strerror(errno));
+        nob_return_defer(false);
+    }
+
+    size_t n = fread(buf, 1, buf_size, f);
+    while (n > 0) {
+        nob_sb_append_buf(sb, buf, n);
+        n = fread(buf, 1, buf_size, f);
+    }
+    if (ferror(f)) {
+        nob_log(NOB_ERROR, "Could not read %s: %s\n", path, strerror(errno));
+        nob_return_defer(false);
+    }
+
+defer:
+    NOB_FREE(buf);
+    if (f)
+        fclose(f);
+    return result;
+}
+
+Nob_String_View nob_sv_chop_by_delim(Nob_String_View *sv, char delim)
+{
+    size_t i = 0;
+    while (i < sv->count && sv->data[i] != delim) {
+        i += 1;
+    }
+
+    Nob_String_View result = nob_sv_from_parts(sv->data, i);
+
+    if (i < sv->count) {
+        // because delim
+        sv->count -= i + 1;
+        sv->data += i + 1;
+    } else {
+        sv->count -= i;
+        sv->data += i;
+    }
+
+    return result;
+}
+
+Nob_String_View nob_sv_from_parts(const char *data, size_t count)
+{
+    Nob_String_View sv;
+    sv.count = count;
+    sv.data = data;
+    return sv;
+}
+
+Nob_String_View sv_trim_left(Nob_String_View sv)
+{
+    size_t i = 0;
+    while (i < sv.count && isspace(sv.data[i])) {
+        i += 1;
+    }
+
+    return nob_sv_from_parts(sv.data + i, sv.count - i);
+}
+
+Nob_String_View sv_trim_right(Nob_String_View sv)
+{
+    size_t i = 0;
+    while (i < sv.count && isspace(sv.data[sv.count - 1 - i])) {
+        i += 1;
+    }
+
+    return nob_sv_from_parts(sv.data, sv.count - i);
+}
+
+Nob_String_View nob_sv_trim(Nob_String_View sv)
+{
+    return sv_trim_right(sv_trim_left(sv));
+}
+
+Nob_String_View nob_sv_from_cstr(const char *cstr)
+{
+    return nob_sv_from_parts(cstr, strlen(cstr));
+}
+
+bool nob_sv_eq(Nob_String_View a, Nob_String_View b)
+{
+    if (a.count != b.count) {
+        return false;
+    } else {
+        return memcmp(a.data, b.data, a.count) == 0;
+    }
 }
 
 // minirent.h SOURCE BEGIN ////////////////////////////////////////
