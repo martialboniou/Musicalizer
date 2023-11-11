@@ -27,8 +27,8 @@ int main()
     if (!reload_libplug())
         return 1;
 
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     size_t factor = 60;
-    SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(factor * 16, factor * 9, "Musicalizer");
     SetTargetFPS(60);
     InitAudioDevice();
@@ -44,6 +44,9 @@ int main()
         }
         plug_update();
     }
+
+    CloseAudioDevice();
+    CloseWindow();
 
     return 0;
 }

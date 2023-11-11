@@ -21,10 +21,11 @@
 //     if (len <= 0.5) {
 //         float s = len - r;
 //         if (s <= 0.0) {
-//             gl_FragColor = fragColor;
+//             gl_FragColor = 1.5 * fragColor;
 //         } else {
 //             float t = 1.0 - s / (0.5 - r);
-//             gl_FragColor = vec4(fragColor.xyz, pow(t, power));
+//             gl_FragColor =
+//                 mix(vec4(fragColor.xyz, 0), fragColor * 1.5, pow(t, power));
 //         }
 //     } else {
 //         gl_FragColor = vec4(0);
@@ -49,10 +50,11 @@ void main()
     if (length(p) <= 0.5) {
         float s = length(p) - r;
         if (s <= 0) {
-            finalColor = fragColor;
+            finalColor = 1.5 * fragColor;
         } else {
             float t = 1 - s / (0.5 - r);
-            finalColor = vec4(fragColor.xyz, pow(t, power));
+            finalColor =
+                mix(vec4(fragColor.xyz, 0), fragColor * 1.5, pow(t, power));
         }
     } else {
         finalColor = vec4(0);

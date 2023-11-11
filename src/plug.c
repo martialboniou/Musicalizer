@@ -13,7 +13,7 @@
 #define GLSL_VERSION  330
 
 #define N             (1 << 13)
-#define FONT_SIZE     69
+#define FONT_SIZE     64
 
 #define RENDER_FPS    30
 #define RENDER_FACTOR 100
@@ -115,8 +115,10 @@ size_t fft_analyze(float dt)
         p->in_win[i] = p->in_raw[i] * hann;
     }
 
+    // FFT
     fft(p->in_win, 1, p->out_raw, N);
 
+    // squash into the logarithmic scale
     float step = 1.06f;
     float lowf = 1.0f;
     size_t m = 0;
@@ -224,8 +226,6 @@ void fft_render(size_t w, size_t h, size_t m)
     for (size_t i = 0; i < m; ++i) {
         float t = p->out_smooth[i];
         float hue = (float)i / m;
-        float saturation = 0.75f;
-        float value = 1.0f;
         Color color = ColorFromHSV(hue * 360, saturation, value);
         Vector2 startPos = {
             i * cell_width + cell_width / 2,
@@ -235,7 +235,7 @@ void fft_render(size_t w, size_t h, size_t m)
             i * cell_width + cell_width / 2,
             h,
         };
-        float thick = cell_width / 2 * sqrt(t);
+        float thick = cell_width / 3 * sqrtf(t);
         DrawLineEx(startPos, endPos, thick, color);
     }
 
@@ -261,21 +261,21 @@ void fft_render(size_t w, size_t h, size_t m)
             i * cell_width + cell_width / 2,
             h - (float)h * 2 / 3 * end,
         };
-        float radius = cell_width * sqrtf(end);
+        float radius = cell_width * 3 * sqrtf(end);
         Vector2 origin = {0};
         if (endPos.y >= startPos.y) {
             // up
-            Rectangle dest = {.x = startPos.x - radius,
+            Rectangle dest = {.x = startPos.x - radius / 2,
                               .y = startPos.y,
-                              .width = 2 * radius,
+                              .width = radius,
                               .height = endPos.y - startPos.y};
             Rectangle source = {0, 0, 1, 0.5};
             DrawTexturePro(texture, source, dest, origin, 0, color);
         } else {
             // down
-            Rectangle dest = {.x = endPos.x - radius,
+            Rectangle dest = {.x = endPos.x - radius / 2,
                               .y = endPos.y,
-                              .width = 2 * radius,
+                              .width = radius,
                               .height = startPos.y - endPos.y};
             Rectangle source = {0, 0.5, 1, 0.5};
             DrawTexturePro(texture, source, dest, origin, 0, color);
@@ -297,7 +297,7 @@ void fft_render(size_t w, size_t h, size_t m)
             i * cell_width + cell_width / 2,
             h - (float)h * 2 / 3 * t,
         };
-        float radius = cell_width * 5 * sqrtf(t); // smaller, was 8
+        float radius = cell_width * 6 * sqrtf(t);
         Vector2 position = {
             .x = center.x - radius,
             .y = center.y - radius,
@@ -310,8 +310,11 @@ void fft_render(size_t w, size_t h, size_t m)
 void plug_update()
 {
 
-    int w = GetRenderWidth();
-    int h = GetRenderHeight();
+    // TODO: FIXME: bug with raylib pre-5.0 (prolly to propagate the
+    // phys./logical screen size from X/windows?)
+    int w = RENDER_WIDTH;  // GetRenderWidth();
+    int h = RENDER_HEIGHT; // GetRenderHeight();
+    // end // TODO
 
     BeginDrawing();
     ClearBackground(GetColor(0x151515FF));

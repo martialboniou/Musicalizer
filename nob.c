@@ -5,7 +5,7 @@
 #include <string.h>
 
 #define NOB_IMPLEMENTATION
-#include "nob.h"
+#include "src/nob.h"
 
 typedef enum {
     TARGET_POSIX,
@@ -19,8 +19,7 @@ const char *target_names[] = {
 };
 static_assert(2 == COUNT_TARGETS, "Amount of targets have changed");
 
-// not in the tsoding's Musializer code (used for ~/.local lib install, ymmv)
-#define MAX_PATH 256 // NOTE: getenv("HOMEDRIVE"), getenv("HOMEPATH") on _WIN32
+const char *dbg_option = "-g"; // or "-ggdb; I use lldb"
 
 void log_available_targets(Nob_Log_Level level)
 {
@@ -167,202 +166,102 @@ defer:
     return result;
 }
 
-void cc(Nob_Cmd *cmd, Target target)
+void append_frameworks(Nob_Cmd *cmd, bool statically_linked)
 {
-    switch (target) {
-    case TARGET_POSIX:
-        nob_cmd_append(cmd, "clang");
-        break;
-    case TARGET_WIN32:
-        nob_cmd_append(cmd, "x86_64-w64-mingw32-gcc");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void common_cflags(Nob_Cmd *cmd, Target target)
-{
-    switch (target) {
-    case TARGET_POSIX:
-    case TARGET_WIN32:
-        nob_cmd_append(cmd, "-Wall", "-Wextra", "-g"); // or -ggdb for last
-                                                       // but I use lldb
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void raylib_cflags(Nob_Cmd *cmd, Target target)
-{
-    char buf[MAX_PATH];
-    switch (target) {
-    case TARGET_POSIX:
-        snprintf(buf, sizeof(buf), "-I%s/.local/include", getenv("HOME"));
-        nob_cmd_append(cmd, strdup(buf));
-        // nob_cmd_append(cmd, "-I/opt/homebrew/Cellar/raylib/4.5.0/include");
-        break;
-    case TARGET_WIN32:
-        nob_cmd_append(cmd, "-I./build/raylib/include");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void static_source(Nob_Cmd *cmd, Target target)
-{
-    nob_cmd_append(cmd, "./src/main.c");
-    nob_cmd_append(cmd, "./src/plug.c");
-    nob_cmd_append(cmd, "./src/separate_translation_unit_for_miniaudio.c");
-    switch (target) {
-    case TARGET_POSIX:
-        nob_cmd_append(cmd, "./src/ffmpeg.c");
-        break;
-    case TARGET_WIN32:
-        nob_cmd_append(cmd, "./src/ffmpeg_windows.c");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void hotreload_source(Nob_Cmd *cmd, Target target)
-{
-    nob_cmd_append(cmd, "./src/main.c");
-    switch (target) {
-    case TARGET_POSIX:
-        nob_cmd_append(cmd, "./src/hotreload.c");
-        break;
-    case TARGET_WIN32:
-        NOB_ASSERT(0 &&
-                   "Unreachable. Hotreloading on Windows is not supported yet");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void plug_dll_source(Nob_Cmd *cmd, Target target)
-{
-    nob_cmd_append(cmd, "./src/plug.c");
-    nob_cmd_append(cmd, "./src/separate_translation_unit_for_miniaudio.c");
-    switch (target) {
-    case TARGET_POSIX:
-        nob_cmd_append(cmd, "./src/ffmpeg.c");
-        break;
-    case TARGET_WIN32:
-        nob_cmd_append(cmd, "./src/ffmpeg_windows.c");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void link_libraries_static(Nob_Cmd *cmd, Target target)
-{
-    char buf[MAX_PATH];
-    switch (target) {
-    case TARGET_POSIX:
-        snprintf(buf, sizeof(buf), "-L%s/.local/lib", getenv("HOME"));
-        nob_cmd_append(cmd, strdup(buf));
-        // nob_cmd_append(cmd, "-L/opt/homebrew/Cellar/raylib/4.5.0/lib");
-        nob_cmd_append(cmd, "-lraylib", "-ldl", "-lpthread");
-#ifdef __APPLE__
+    if (statically_linked) {
+        // all because of the way libraylib.a has been built
+        // nob_cmd_append(cmd, "-framework", "Foundation");
+        nob_cmd_append(cmd, "-framework", "OpenGL");
+        nob_cmd_append(cmd, "-framework", "Cocoa");
+        nob_cmd_append(cmd, "-framework", "IOKit");
+        nob_cmd_append(cmd, "-framework", "CoreAudio");
+        nob_cmd_append(cmd, "-framework", "CoreVideo");
+        // nob_cmd_append(cmd, "-framework", "CoreServices");
+        // nob_cmd_append(cmd, "-framework", "CoreGraphics");
+        // nob_cmd_append(cmd, "-framework", "AppKit");
+        nob_cmd_append(cmd, "-framework", "AudioToolbox");
+    } else {
         // for miniaudio.h's MA_NO_RUNTIME_LINKING
         nob_cmd_append(cmd, "-framework", "CoreFoundation", "-framework",
                        "CoreAudio", "-framework", "AudioToolbox");
-#endif // __APPLE__
-        break;
-    case TARGET_WIN32:
-        nob_cmd_append(cmd, "-L./build/raylib/lib");
-        nob_cmd_append(cmd, "-lraylib", "-lwinmm", "-lgdi32", "-static");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
     }
 }
 
-void link_libraries_dynamic(Nob_Cmd *cmd, Target target)
-{
-    char buf[MAX_PATH];
-    switch (target) {
-    case TARGET_POSIX:
-        snprintf(buf, sizeof(buf), "-L%s/.local/lib", getenv("HOME"));
-        nob_cmd_append(cmd, strdup(buf));
-        // nob_cmd_append(cmd, "-L/opt/homebrew/Cellar/raylib/4.5.0/lib");
-        nob_cmd_append(cmd, "-lraylib", "-ldl", "-lpthread");
-        break;
-    case TARGET_WIN32:
-        NOB_ASSERT(0 &&
-                   "Unreachable. Hotreloading on Windows is not supported yet");
-        break;
-    default:
-        NOB_ASSERT(0 && "unreachable");
-    }
-}
-
-void append_frameworks(Nob_Cmd *cmd)
-{
-    // for miniaudio.h's MA_NO_RUNTIME_LINKING
-    nob_cmd_append(cmd, "-framework", "CoreFoundation", "-framework",
-                   "CoreAudio", "-framework", "AudioToolbox");
-}
-
-bool build_main_executable(const char *output_path, Config config)
+bool build_main(const char *output_path, Config config)
 {
     bool result = true;
     Nob_Cmd cmd = {0};
 
     switch (config.target) {
     case TARGET_POSIX: {
+
+        // const char *home = getenv("HOME");
+        // nob_temp_sprintf("-I%s/.local/include", home);
+
         if (config.hotreload) {
+            // TODO: build dynamic raylib and link with it
+            nob_log(
+                NOB_ERROR,
+                "TODO: Hotreloading build for POSIX is temporarily disabled");
+            nob_return_defer(false);
+
             // dynamic library case
-            cc(&cmd, config.target);
-            common_cflags(&cmd, config.target);
-            raylib_cflags(&cmd, config.target);
+            cmd.count = 0;
+            nob_cmd_append(&cmd, "clang");
+            nob_cmd_append(&cmd, "-Wall", "-Wextra", dbg_option);
+            nob_cmd_append(&cmd, "-I./raylib/src");
 #ifdef __APPLE__
-            nob_cmd_append(&cmd, "-dynamiclib");
-            nob_cmd_append(&cmd, "-o", "./build/libplug.dylib");
+            nob_cmd_append(&cmd, "-dynamiclib", "-o", "./build/libplug.dylib");
 #else
-            nob_cmd_append(&cmd, "-fPIC", "-shared");
-            nob_cmd_append(&cmd, "-o", "./build/libplug.so");
+            nob_cmd_append(&cmd, "-fPIC", "-shared", "-o",
+                           "./build/libplug.so");
 #endif
-            plug_dll_source(&cmd, config.target);
-            link_libraries_dynamic(&cmd, config.target);
+            nob_cmd_append(&cmd, "./src/plug.c",
+                           "./src/separate_translation_unit_for_miniaudio.c",
+                           "./src/ffmpeg.c");
+            nob_cmd_append(&cmd, "./src/plug.c",
+                           "./src/separate_translation_unit_for_miniaudio.c",
+                           "./src/ffmpeg.c", "./src/main.c");
+            nob_cmd_append(&cmd, "-ldl", "-lpthread");
 #ifdef __APPLE__
-            append_frameworks(&cmd);
+            append_frameworks(&cmd, false);
 #endif
             if (!nob_cmd_run_sync(cmd))
                 nob_return_defer(false);
 
             cmd.count = 0;
-
-            cc(&cmd, config.target);
-            common_cflags(&cmd, config.target);
-            raylib_cflags(&cmd, config.target);
+            nob_cmd_append(&cmd, "clang");
+            nob_cmd_append(&cmd, "-Wall", "-Wextra", "-g");
+            nob_cmd_append(&cmd, "-I./raylib/src");
             nob_cmd_append(&cmd, "-DHOTRELOAD");
-            nob_cmd_append(&cmd, "-o", "./build/musicalizer");
-            hotreload_source(&cmd, config.target);
-            link_libraries_dynamic(&cmd, config.target);
+            nob_cmd_append(&cmd, "-o", output_path);
+            nob_cmd_append(&cmd, "./src/main.c");
+            nob_cmd_append(&cmd, "./src/hotreload.c");
+
             if (!nob_cmd_run_sync(cmd))
                 nob_return_defer(false);
         } else {
             // static library case
-            cc(&cmd, config.target);
-            common_cflags(&cmd, config.target);
-            raylib_cflags(&cmd, config.target);
-            nob_cmd_append(&cmd, "-o", "./build/musicalizer");
-            static_source(&cmd, config.target);
-            link_libraries_static(&cmd, config.target);
+            cmd.count = 0;
+            nob_cmd_append(&cmd, "clang");
+            nob_cmd_append(&cmd, "-Wall", "-Wextra", dbg_option);
+            nob_cmd_append(&cmd, "-I./raylib/src");
+            nob_cmd_append(&cmd, "-o", output_path);
+            nob_cmd_append(&cmd, "./src/plug.c",
+                           "./src/separate_translation_unit_for_miniaudio.c",
+                           "./src/ffmpeg.c", "./src/main.c");
+            // nob_cmd_append(&cmd, "-L./build/raylib", "-lraylib");
+            nob_cmd_append(
+                &cmd,
+                nob_temp_sprintf("./build/raylib/%s/libraylib.a",
+                                 NOB_ARRAY_GET(target_names, config.target)));
+            nob_cmd_append(&cmd, "-ldl", "-lpthread");
 #ifdef __APPLE__
-            append_frameworks(&cmd);
+            append_frameworks(&cmd, true);
 #endif
             if (!nob_cmd_run_sync(cmd))
                 nob_return_defer(false);
         }
-
     } break;
     case TARGET_WIN32: {
         if (config.hotreload) {
@@ -371,12 +270,22 @@ bool build_main_executable(const char *output_path, Config config)
             return false;
         }
         // the only way to compile on windows for now
-        cc(&cmd, config.target);
-        common_cflags(&cmd, config.target);
-        raylib_cflags(&cmd, config.target);
-        nob_cmd_append(&cmd, "-o", "./build/musicalizer.exe");
-        static_source(&cmd, config.target);
-        link_libraries_static(&cmd, config.target);
+        cmd.count = 0;
+        nob_cmd_append(&cmd, "x86_64-w64-mingw32-gcc");
+        nob_cmd_append(&cmd, "-Wall", "-Wextra", dbg_option);
+        nob_cmd_append(&cmd, "-I./raylib/src");
+        // nob_cmd_append(&cmd, "-I./build/raylib-windows/include");
+        nob_cmd_append(&cmd, "-o", output_path);
+        nob_cmd_append(&cmd, "./src/plug.c",
+                       "./src/separate_translation_unit_for_miniaudio.c",
+                       "./src/ffmpeg_windows.c", "./src/main.c");
+        nob_cmd_append(
+            &cmd, nob_temp_sprintf("./build/raylib/%s/libraylib.a",
+                                   NOB_ARRAY_GET(target_names, config.target)));
+        // nob_cmd_append(&cmd, "-L./build/raylib-windows/lib", "-lraylib");
+        nob_cmd_append(&cmd, "-lwinmm", "-lgdi32");
+        nob_cmd_append(&cmd, "-static");
+
         if (!nob_cmd_run_sync(cmd))
             nob_return_defer(false);
     } break;
@@ -390,6 +299,106 @@ defer:
     return result;
 }
 
+static const char *raylib_modules[] = {
+    "rcore",   "raudio", "rglfw",     "rmodels",
+    "rshapes", "rtext",  "rtextures", "utils",
+};
+
+bool build_raylib(Config config)
+{
+    bool result = true;
+    Nob_Cmd cmd = {0};
+
+    if (!nob_mkdir_if_not_exists("./build/raylib")) {
+        nob_return_defer(false);
+    }
+
+    Nob_Procs procs = {0};
+
+    const char *build_path = nob_temp_sprintf(
+        "./build/raylib/%s", NOB_ARRAY_GET(target_names, config.target));
+
+    if (!nob_mkdir_if_not_exists(build_path)) {
+        nob_return_defer(false);
+    }
+
+    bool needs_rebuild = false;
+    for (size_t i = 0; i < NOB_ARRAY_LEN(raylib_modules); ++i) {
+        const char *input_path =
+            nob_temp_sprintf("./raylib/src/%s.c", raylib_modules[i]);
+        const char *output_path =
+            nob_temp_sprintf("%s/%s.o", build_path, raylib_modules[i]);
+
+        if (nob_needs_rebuild(input_path, output_path)) {
+            needs_rebuild = true;
+            cmd.count = 0;
+
+            switch (config.target) {
+            case TARGET_POSIX:
+                nob_cmd_append(&cmd, "clang");
+                break;
+            case TARGET_WIN32:
+                nob_cmd_append(&cmd, "x86_64-w64-mingw32-gcc");
+                break;
+            default:
+                NOB_ASSERT(0 && "unreachable");
+            }
+
+            nob_cmd_append(&cmd, dbg_option);
+            nob_cmd_append(&cmd, "-DPLATFORM_DESKTOP");
+            nob_cmd_append(&cmd, "-I./raylib/src/external/glfw/include");
+            nob_cmd_append(&cmd, "-c", input_path);
+            nob_cmd_append(&cmd, "-o", output_path);
+#ifdef __APPLE__
+            if (strcmp("rglfw", raylib_modules[i]) == 0)
+                nob_cmd_append(&cmd, "-ObjC");
+
+#endif // __APPLE__
+
+            Nob_Proc proc = nob_cmd_run_async(cmd);
+            nob_da_append(&procs, proc);
+        }
+    }
+
+    if (needs_rebuild) {
+        bool success = true;
+        for (size_t i = 0; i < procs.count; ++i) {
+            success = nob_proc_wait(procs.items[i]) && success;
+        }
+        if (!success)
+            nob_return_defer(false);
+
+        cmd.count = 0;
+        const char *lib_name = nob_temp_sprintf("%s/libraylib.a", build_path);
+        // #ifdef __APPLE__
+        //         nob_cmd_append(&cmd, "libtool", "-static");
+        //         nob_cmd_append(&cmd, "-o", lib_name);
+        // #else
+        nob_cmd_append(&cmd, "ar", "-crs", lib_name);
+        // #endif // __APPLE__
+        for (size_t i = 0; i < NOB_ARRAY_LEN(raylib_modules); ++i) {
+            const char *input_path =
+                nob_temp_sprintf("%s/%s.o", build_path, raylib_modules[i]);
+            nob_cmd_append(&cmd, input_path);
+        }
+        if (!nob_cmd_run_sync(cmd))
+            nob_return_defer(false);
+    }
+
+defer:
+    nob_cmd_free(cmd);
+    return result;
+}
+
+void log_available_subcommands(const char *program, Nob_Log_Level level)
+{
+    nob_log(level, "Usage: %s <subcommand>", program);
+    nob_log(level, "Subcommands:");
+    nob_log(level, "    build");
+    nob_log(level, "    config");
+    nob_log(level, "    logo");
+}
+
 int main(int argc, char **argv)
 {
 
@@ -399,11 +408,7 @@ int main(int argc, char **argv)
 
     if (argc <= 0) {
         nob_log(NOB_ERROR, "No subcommand is provided");
-        nob_log(NOB_ERROR, "Usage: %s <subcommand>", program);
-        nob_log(NOB_ERROR, "Subcommands:");
-        nob_log(NOB_ERROR, "    build");
-        nob_log(NOB_ERROR, "    config");
-        nob_log(NOB_ERROR, "    logo");
+        log_available_subcommands(program, NOB_ERROR);
         return 1;
     }
 
@@ -419,7 +424,9 @@ int main(int argc, char **argv)
         nob_log(NOB_INFO, "------------------------------");
         log_config(config);
         nob_log(NOB_INFO, "------------------------------");
-        if (!build_main_executable("./build/musicalizer", config))
+        if (!build_raylib(config))
+            return 1;
+        if (!build_main("./build/musicalizer", config))
             return 1;
         if (config.target == TARGET_WIN32) {
             if (!nob_copy_file("musicalizer-logged.bat",
@@ -458,6 +465,9 @@ int main(int argc, char **argv)
 
         if (!nob_cmd_run_sync(cmd))
             return 1;
+    } else {
+        nob_log(NOB_ERROR, "Unknown subcommand %s", subcommand);
+        log_available_subcommands(program, NOB_ERROR);
     }
 
     return 0;

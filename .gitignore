@@ -11,13 +11,16 @@ build/
 nob
 nob.old
 nob.exe
+nob.exe.old
+# raylib source
+/raylib
 # zig build (coming soon)
 zig-out/
 zig-cache/
 # tests
-!src/test/*.c
-!src/test/*.sh
-!src/test/windows/*.c
-!src/test/windows/*.sh
-!src/test/windows/*.md
-src/test/
+/src/test/*
+!/src/test/*.c
+!/src/test/*.sh
+!/src/test/windows/*.c
+!/src/test/windows/*.sh
+!/src/test/windows/*.md

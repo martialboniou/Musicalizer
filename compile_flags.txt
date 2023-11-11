@@ -10,5 +10,5 @@
 -I~/.local/include
 -I/opt/homebrew/include
 -DHOTRELOAD # fix an issue with clangd and macros
-#-DNOB_IMPLEMENTATION
+-DNOB_IMPLEMENTATION
 #-DNOB_REBUILD_URSELF

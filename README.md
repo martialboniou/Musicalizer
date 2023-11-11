@@ -145,7 +145,7 @@ RayLib
 ------
 
 Download [this archive](https://github.com/raysan5/raylib/releases/download/4.6-dev/raylib-4.6-dev_win64_mingw-w64.zip) first.
-Unzip and put the content in `./build/raylib`
+Unzip and put the content in `./build/raylib-windows`
 
 Cross-compilation
 -----------------
@@ -222,3 +222,17 @@ You can build for windows (64-bit, btw!):
 ./nob build
 wine64 ./build/musicalizer.exe
 ```
+
+Build `raylib` from `nob`
+=========================
+
+This part was written during the [13th video](https://www.youtube.com/watch?v=wH963jJ1lRM&list=PLpM-Dvs8t0Vak1rrE2NJn8XYEJ5M7-BqT&index=14).
+The `raylib` source code must be put in the `./raylib` directory.
+Note that the `-ObjC` flag must be added to compile `rglfw` on macOS.
+
+```sh
+git clone https://github.com/raysan5/raylib
+./nob config
+./nob build
+```
+

@@ -6,11 +6,12 @@ set -xe
 
 # TEMPORARY: use git current sources (10/2023) instead of brew's version
 RAYLIB_PATH="${HOME}/.local"
-
+RAYLIB_PATH_INCLUDE="${RAYLIB_PATH}/include"
+RAYLIB_PATH_LIB="${RAYLIB_PATH}/lib"
 # CFLAGS="-Wall -Wextra `pkg-config --cflags raylib`"
 # LIBS="`pkg-config --libs raylib` -L/opt/homebrew/lib -ldl -lpthread"
-CFLAGS="-Wall -Wextra -I${RAYLIB_PATH}/include"
-LIBS="-L${RAYLIB_PATH}/lib -lraylib -L/opt/homebrew/lib -ldl -lpthread"
+CFLAGS="-Wall -Wextra -I${RAYLIB_PATH_INCLUDE}"
+LIBS="-L${RAYLIB_PATH_LIB} -lraylib -L/opt/homebrew/lib -ldl -lpthread"
 
 VER=`(cat VERSION)`
 MAJOR=`(cut -d . -f 1 VERSION)`
@@ -59,8 +60,13 @@ clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer \
     ./src/separate_translation_unit_for_miniaudio.c \
     $LIBS
 
-### the next one is to compile the static library version
-# clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer ./src/ffmpeg.c ./src/plug.c ./src/separate_translation_unit_for_miniaudio.c ./src/main.c $LIBS
+### the next one is to compile the static library version on macOS
+# clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer \
+#     ./src/ffmpeg.c ./src/plug.c \
+#     ./src/separate_translation_unit_for_miniaudio.c ./src/main.c \
+#     ./build/raylib/posix/libraylib.a \
+#     -framework "OpenGL" -framework "Cocoa" \
+#     -framework "IOKit" -framework "CoreAudio" -framework "CoreVideo"
 
 ### the next one is to compile for windows (WIP)
 if [ $DISABLE_WINDOWS_COMPILE != true ]; then
@@ -68,11 +74,11 @@ if [ $DISABLE_WINDOWS_COMPILE != true ]; then
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         x86_64-w64-mingw32-gcc \
             -Wall -Wextra -DWINDOWS \
-            -I./build/raylib/include \
+            -I./build/raylib-windows/include \
             -o ./build/musicalizer.exe \
             ./src/ffmpeg_windows.c \
             ./src/plug.c ./src/main.c \
-            -L./build/raylib/lib \
+            -L./build/raylib-windows/lib \
             -lraylib -lwinmm -lgdi32 \
             -static
     fi
