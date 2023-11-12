@@ -1,5 +1,3 @@
-RAYLIB_PATH="${HOME}/.local"
-
+#/usr/bin/env bash
 DYLD_FORCE_FLAT_NAMESPACE=1 \
-    DYLD_LIBRARY_PATH=./build:$RAYLIB_PATH/lib: \
-    ./build/musicalizer ./music/Kalaido\ -\ Hanging\ Lanterns.ogg
+    DYLD_LIBRARY_PATH=./build:./build/raylib/posix: ./build/musicalizer

@@ -15,17 +15,20 @@ About dylib
 ===========
 
 For now, the **hot reloading** works while compiling the dynamic library
-properly (no need to `codesign` by the way). For example:
+properly (no need to `codesign` by the way; try `./nob config -h && ./nob build`).
+For example:
 - change the `exec.sh` path to the audio file (`flac` is only available if
 you build `raylib` with the flag `SUPPORT_FILEFORMAT_FLAC`)
 - run the program with `exec.sh` (and let it run!)
-- edit `src/plug.c` (say, change the color of a `DrawRectangle`) 
-- run `make.sh` (to recompile the dynamic library; even if in this case,
-  it'll recompile and link the program too)
+- edit `src/plug.c` (say, change the color of a text element) 
+- run `./nob config -h && ./nob build` (to recompile the dynamic library; even
+  if in this case, it'll recompile and link the program too; you also can run
+  `make.sh` instead; if `nob` doesn't exist at the root of this project,
+  just execute: `cc -o nob nob.c`)
 - switch back on the Musicalizer window
-- type the `r` key as set on a QWERTY layout (`p` on Dvorak)
+- type the `h` key as set on a QWERTY layout (`d` on Dvorak)
 it will load the newest version of the plugin (and thus, change the color if
-you did so in `plug.c`)
+you did so in `src/plug.c`)
 
 About GLES (not required)
 =========================
@@ -232,7 +235,7 @@ Note that the `-ObjC` flag must be added to compile `rglfw` on macOS.
 
 ```sh
 git clone https://github.com/raysan5/raylib
-./nob config
-./nob build
+./nob config && ./nob build
+./nob config -h && ./nob build
 ```
 

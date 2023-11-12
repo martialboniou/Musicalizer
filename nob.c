@@ -34,6 +34,12 @@ typedef struct {
     bool hotreload;
 } Config;
 
+typedef struct {
+    char major[2];
+    char minor[2];
+    char patch[3];
+} Version;
+
 bool parse_config_from_args(int argc, char **argv, Config *config)
 {
     memset(config, 0, sizeof(Config));
@@ -68,6 +74,8 @@ bool parse_config_from_args(int argc, char **argv, Config *config)
                 return false;
             }
         } else if (strcmp("-h", flag) == 0) {
+            // TODO: -h traditionally is used for --help. Let's replace it with
+            // something
             config->hotreload = true;
         } else {
             nob_log(NOB_ERROR, "Unknown flag %s", flag);
@@ -103,6 +111,35 @@ bool dump_config_to_file(const char *path, Config config)
         return false;
 
     return true;
+}
+
+bool load_version_from_file(const char *path, Version *version)
+{
+    bool result = true;
+    Nob_String_Builder sb = {0};
+
+    nob_log(NOB_INFO, "Loading version from %s", path);
+
+    if (!nob_read_entire_file(path, &sb))
+        nob_return_defer(false);
+
+    Nob_String_View content = {
+        .data = sb.items,
+        .count = sb.count,
+    };
+
+    // TODO: manage comment header?
+    Nob_String_View line = nob_sv_trim(nob_sv_chop_by_delim(&content, '\n'));
+    Nob_String_View major = nob_sv_chop_by_delim(&line, '.');
+    Nob_String_View minor = nob_sv_chop_by_delim(&line, '.');
+
+    sprintf(version->major, SV_Fmt, SV_Arg(major));
+    sprintf(version->minor, SV_Fmt, SV_Arg(minor));
+    sprintf(version->patch, SV_Fmt, SV_Arg(nob_sv_trim(line)));
+
+defer:
+    nob_sb_free(sb);
+    return result;
 }
 
 bool load_config_from_file(const char *path, Config *config)
@@ -168,23 +205,17 @@ defer:
 
 void append_frameworks(Nob_Cmd *cmd, bool statically_linked)
 {
-    if (statically_linked) {
-        // all because of the way libraylib.a has been built
-        // nob_cmd_append(cmd, "-framework", "Foundation");
-        nob_cmd_append(cmd, "-framework", "OpenGL");
-        nob_cmd_append(cmd, "-framework", "Cocoa");
-        nob_cmd_append(cmd, "-framework", "IOKit");
-        nob_cmd_append(cmd, "-framework", "CoreAudio");
-        nob_cmd_append(cmd, "-framework", "CoreVideo");
-        // nob_cmd_append(cmd, "-framework", "CoreServices");
-        // nob_cmd_append(cmd, "-framework", "CoreGraphics");
-        // nob_cmd_append(cmd, "-framework", "AppKit");
-        nob_cmd_append(cmd, "-framework", "AudioToolbox");
-    } else {
-        // for miniaudio.h's MA_NO_RUNTIME_LINKING
-        nob_cmd_append(cmd, "-framework", "CoreFoundation", "-framework",
-                       "CoreAudio", "-framework", "AudioToolbox");
-    }
+    // all because of the way libraylib.a has been built
+    // nob_cmd_append(cmd, "-framework", "Foundation");
+    nob_cmd_append(cmd, "-framework", "OpenGL");
+    nob_cmd_append(cmd, "-framework", "Cocoa");
+    nob_cmd_append(cmd, "-framework", "IOKit");
+    nob_cmd_append(cmd, "-framework", "CoreAudio");
+    nob_cmd_append(cmd, "-framework", "CoreVideo");
+    // nob_cmd_append(cmd, "-framework", "CoreServices");
+    // nob_cmd_append(cmd, "-framework", "CoreGraphics");
+    // nob_cmd_append(cmd, "-framework", "AppKit");
+    nob_cmd_append(cmd, "-framework", "AudioToolbox");
 }
 
 bool build_main(const char *output_path, Config config)
@@ -192,26 +223,35 @@ bool build_main(const char *output_path, Config config)
     bool result = true;
     Nob_Cmd cmd = {0};
 
+    printf("target in build_main: %d\n", config.target);
     switch (config.target) {
     case TARGET_POSIX: {
 
+        // in case, you need files in ~/.local (here, headers)
         // const char *home = getenv("HOME");
         // nob_temp_sprintf("-I%s/.local/include", home);
 
         if (config.hotreload) {
-            // TODO: build dynamic raylib and link with it
-            nob_log(
-                NOB_ERROR,
-                "TODO: Hotreloading build for POSIX is temporarily disabled");
-            nob_return_defer(false);
-
             // dynamic library case
             cmd.count = 0;
             nob_cmd_append(&cmd, "clang");
             nob_cmd_append(&cmd, "-Wall", "-Wextra", dbg_option);
-            nob_cmd_append(&cmd, "-I./raylib/src");
+            nob_cmd_append(&cmd, "-I./raylib/src", "-I./src");
 #ifdef __APPLE__
-            nob_cmd_append(&cmd, "-dynamiclib", "-o", "./build/libplug.dylib");
+            nob_cmd_append(&cmd, "-dynamiclib");
+            Version version = {0};
+            if (load_version_from_file("./VERSION", &version)) {
+                nob_cmd_append(
+                    &cmd, "-install_name",
+                    nob_temp_sprintf("libplug.%s.dylib", version.major));
+                nob_cmd_append(&cmd, "-current_version",
+                               nob_temp_sprintf("%s.%s.%s", version.major,
+                                                version.minor, version.patch));
+                nob_cmd_append(
+                    &cmd, "-compatibility_version",
+                    nob_temp_sprintf("%s.%s.0", version.major, version.minor));
+            }
+            nob_cmd_append(&cmd, "-o", "./build/libplug.dylib");
 #else
             nob_cmd_append(&cmd, "-fPIC", "-shared", "-o",
                            "./build/libplug.so");
@@ -219,9 +259,11 @@ bool build_main(const char *output_path, Config config)
             nob_cmd_append(&cmd, "./src/plug.c",
                            "./src/separate_translation_unit_for_miniaudio.c",
                            "./src/ffmpeg.c");
-            nob_cmd_append(&cmd, "./src/plug.c",
-                           "./src/separate_translation_unit_for_miniaudio.c",
-                           "./src/ffmpeg.c", "./src/main.c");
+            nob_cmd_append(
+                &cmd,
+                nob_temp_sprintf("-L./build/raylib/%s",
+                                 NOB_ARRAY_GET(target_names, config.target)),
+                "-lraylib");
             nob_cmd_append(&cmd, "-ldl", "-lpthread");
 #ifdef __APPLE__
             append_frameworks(&cmd, false);
@@ -237,6 +279,32 @@ bool build_main(const char *output_path, Config config)
             nob_cmd_append(&cmd, "-o", output_path);
             nob_cmd_append(&cmd, "./src/main.c");
             nob_cmd_append(&cmd, "./src/hotreload.c");
+
+#ifdef __APPLE__
+            // TODO: -install_name @rpath/libraylib.dylib ?
+            // I use DYLD_LIBRARY_PATH for now
+#else
+            // NOTE: -rpath= is bad syntax (only works with ld in GNU env)
+            const char *rpath = "-Wl,-rpath";
+            nob_cmd_append(&cmd, rpath, "./build");
+            nob_cmd_append(&cmd, rpath, "./");
+            nob_cmd_append(
+                &cmd, rpath,
+                nob_temp_sprintf("./build/raylib/%s",
+                                 NOB_ARRAY_GET(target_names, config.target)));
+            // NOTE: just in case somebody wants to run musicalizer from
+            // within the ./build/ folder
+            nob_cmd_append(
+                &cmd, rpath,
+                nob_temp_sprintf("./raylib/%s",
+                                 NOB_ARRAY_GET(target_names, config.target)));
+#endif
+            nob_cmd_append(
+                &cmd,
+                nob_temp_sprintf("-L./build/raylib/%s",
+                                 NOB_ARRAY_GET(target_names, config.target)),
+                "-lraylib");
+            append_frameworks(&cmd, true);
 
             if (!nob_cmd_run_sync(cmd))
                 nob_return_defer(false);
@@ -346,6 +414,10 @@ bool build_raylib(Config config)
 
             nob_cmd_append(&cmd, dbg_option);
             nob_cmd_append(&cmd, "-DPLATFORM_DESKTOP");
+#ifdef __APPLE__
+#else
+            nob_cmd_append(&cmd, "-fPIC");
+#endif // __APPLE__
             nob_cmd_append(&cmd, "-I./raylib/src/external/glfw/include");
             nob_cmd_append(&cmd, "-c", input_path);
             nob_cmd_append(&cmd, "-o", output_path);
@@ -360,29 +432,57 @@ bool build_raylib(Config config)
         }
     }
 
-    if (needs_rebuild) {
-        bool success = true;
-        for (size_t i = 0; i < procs.count; ++i) {
-            success = nob_proc_wait(procs.items[i]) && success;
-        }
-        if (!success)
-            nob_return_defer(false);
+    bool success = true;
+    for (size_t i = 0; i < procs.count; ++i) {
+        success = nob_proc_wait(procs.items[i]) && success;
+    }
+    if (!success)
+        nob_return_defer(false);
 
-        cmd.count = 0;
-        const char *lib_name = nob_temp_sprintf("%s/libraylib.a", build_path);
-        // #ifdef __APPLE__
-        //         nob_cmd_append(&cmd, "libtool", "-static");
-        //         nob_cmd_append(&cmd, "-o", lib_name);
-        // #else
-        nob_cmd_append(&cmd, "ar", "-crs", lib_name);
-        // #endif // __APPLE__
-        for (size_t i = 0; i < NOB_ARRAY_LEN(raylib_modules); ++i) {
-            const char *input_path =
-                nob_temp_sprintf("%s/%s.o", build_path, raylib_modules[i]);
-            nob_cmd_append(&cmd, input_path);
+    if (needs_rebuild) {
+        if (config.hotreload) {
+            cmd.count = 0;
+            if (config.target == TARGET_WIN32) {
+                nob_log(NOB_ERROR,
+                        "TODO: hotreload for windows is not supported yet");
+                nob_return_defer(false);
+            }
+            nob_cmd_append(&cmd, "clang");
+#ifdef __APPLE__
+            nob_cmd_append(&cmd, "-dynamiclib", "-o",
+                           nob_temp_sprintf("%s/libraylib.dylib", build_path));
+#else
+            nob_cmd_append(&cmd, "-shared", "-o",
+                           nob_temp_sprintf("%s/libraylib.so", build_path));
+#endif // __APPLE__
+            for (size_t i = 0; i < NOB_ARRAY_LEN(raylib_modules); ++i) {
+                const char *input_path =
+                    nob_temp_sprintf("%s/%s.o", build_path, raylib_modules[i]);
+                nob_cmd_append(&cmd, input_path);
+            }
+#ifdef __APPLE__
+            append_frameworks(&cmd, true);
+#endif
+            if (!nob_cmd_run_sync(cmd))
+                nob_return_defer(false);
+        } else {
+            cmd.count = 0;
+            const char *lib_name =
+                nob_temp_sprintf("%s/libraylib.a", build_path);
+            // #ifdef __APPLE__
+            //         nob_cmd_append(&cmd, "libtool", "-static");
+            //         nob_cmd_append(&cmd, "-o", lib_name);
+            // #else
+            nob_cmd_append(&cmd, "ar", "-crs", lib_name);
+            // #endif // __APPLE__
+            for (size_t i = 0; i < NOB_ARRAY_LEN(raylib_modules); ++i) {
+                const char *input_path =
+                    nob_temp_sprintf("%s/%s.o", build_path, raylib_modules[i]);
+                nob_cmd_append(&cmd, input_path);
+            }
+            if (!nob_cmd_run_sync(cmd))
+                nob_return_defer(false);
         }
-        if (!nob_cmd_run_sync(cmd))
-            nob_return_defer(false);
     }
 
 defer:
@@ -433,8 +533,7 @@ int main(int argc, char **argv)
                                "build/musicalizer-logged.bat"))
                 return 1;
         }
-        if (!nob_copy_directory_recursively("./resources/",
-                                            "./build/resources/"))
+        if (!nob_copy_directory_recursively("./resources", "./build/resources"))
             return 1;
     } else if (strcmp(subcommand, "config") == 0) {
         if (!nob_mkdir_if_not_exists("build"))
