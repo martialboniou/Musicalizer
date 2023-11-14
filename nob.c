@@ -261,9 +261,7 @@ bool build_main(Config config)
             nob_cmd_append(&cmd, "-fPIC", "-shared", "-o",
                            "./build/libplug.so");
 #endif
-            nob_cmd_append(&cmd, "./src/plug.c",
-                           "./src/separate_translation_unit_for_miniaudio.c",
-                           "./src/ffmpeg.c");
+            nob_cmd_append(&cmd, "./src/plug.c", "./src/ffmpeg.c");
             nob_cmd_append(
                 &cmd,
                 nob_temp_sprintf("-L./build/raylib/%s",
@@ -322,9 +320,8 @@ bool build_main(Config config)
             nob_cmd_append(&cmd, "-Wall", "-Wextra", dbg_option);
             nob_cmd_append(&cmd, "-I./raylib/src");
             nob_cmd_append(&cmd, "-o", "./build/musicalizer");
-            nob_cmd_append(&cmd, "./src/plug.c",
-                           "./src/separate_translation_unit_for_miniaudio.c",
-                           "./src/ffmpeg.c", "./src/main.c");
+            nob_cmd_append(&cmd, "./src/plug.c", "./src/ffmpeg.c",
+                           "./src/main.c");
             // nob_cmd_append(&cmd, "-L./build/raylib", "-lraylib");
             nob_cmd_append(
                 &cmd,
@@ -361,10 +358,8 @@ bool build_main(Config config)
         nob_cmd_append(&cmd, "-I./raylib/src");
         // nob_cmd_append(&cmd, "-I./build/raylib-windows/include");
         nob_cmd_append(&cmd, "-o", "./build/musicalizer.exe");
-        nob_cmd_append(&cmd, "./src/plug.c",
-                       "./src/separate_translation_unit_for_miniaudio.c",
-                       "./src/ffmpeg_windows.c", "./src/main.c",
-                       "./build/musicalizer.res");
+        nob_cmd_append(&cmd, "./src/plug.c", "./src/ffmpeg_windows.c",
+                       "./src/main.c", "./build/musicalizer.res");
         nob_cmd_append(
             &cmd, nob_temp_sprintf("./build/raylib/%s/libraylib.a",
                                    NOB_ARRAY_GET(target_names, config.target)));
@@ -396,9 +391,8 @@ bool build_main(Config config)
         nob_cmd_append(&cmd, "cl.exe");
         nob_cmd_append(&cmd, "/I", "./raylib/src");
         nob_cmd_append(&cmd, "-o", "/Fobuild\\", "/Febuild\\musicalizer.exe");
-        nob_cmd_append(&cmd, "./src/plug.c",
-                       "./src/separate_translation_unit_for_miniaudio.c",
-                       "./src/ffmpeg_windows.c", "./src/main.c");
+        nob_cmd_append(&cmd, "./src/plug.c", "./src/ffmpeg_windows.c",
+                       "./src/main.c");
         // TODO: building resource file is not implemented for TARGET_WIN32_MSVC
         // "./build/musicalizer.res"
         nob_cmd_append(

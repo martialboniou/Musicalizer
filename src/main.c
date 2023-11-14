@@ -9,7 +9,6 @@
 #endif              // _WIN32
 
 #include "hotreload.h"
-#include "separate_translation_unit_for_miniaudio.h"
 
 int main()
 {

@@ -58,17 +58,14 @@ fi
 
 clang $DBG_OPTIONS $CFLAGS ${SOFLAGS} -fPIC -o ./build/libplug.${SO} \
     ./src/plug.c ./src/ffmpeg.c \
-    ./src/separate_translation_unit_for_miniaudio.c \
     $LIBS
 clang $DBG_OPTIONS $CFLAGS -DHOTRELOAD -o ./build/musicalizer \
     ./src/main.c ./src/hotreload.c \
-    ./src/separate_translation_unit_for_miniaudio.c \
     $LIBS
 
 ### the next one is to compile the static library version on macOS
 # clang $DBG_OPTIONS $CFLAGS -o ./build/musicalizer \
-#     ./src/ffmpeg.c ./src/plug.c \
-#     ./src/separate_translation_unit_for_miniaudio.c ./src/main.c \
+#     ./src/ffmpeg.c ./src/plug.c ./src/main.c \
 #     ./build/raylib/posix/libraylib.a \
 #     -framework "OpenGL" -framework "Cocoa" \
 #     -framework "IOKit" -framework "CoreAudio" -framework "CoreVideo"

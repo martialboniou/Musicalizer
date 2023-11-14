@@ -1,7 +1,6 @@
 #include "plug.h"
 #include "ffmpeg.h"
 #include "raylib.h"
-#include "separate_translation_unit_for_miniaudio.h"
 #include <assert.h>
 #include <complex.h>
 #include <math.h>
@@ -9,6 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define _WINDOWS_
+#ifdef __APPLE__
+#define MA_NO_RUNTIME_LINKING
+#endif // __APPLE__
+#include "miniaudio.h"
 
 #define GLSL_VERSION  330
 
@@ -65,7 +70,7 @@ typedef struct {
     float out_smear[N];
 
     // microphone
-    void *microphone;
+    ma_device *microphone;
     bool capturing;
 } Plug;
 
@@ -187,6 +192,14 @@ void callback(void *bufferData, unsigned int frames)
     for (size_t i = 0; i < frames; ++i) {
         fft_push(fs[i][0]); // left output only (for now!)
     }
+}
+
+void ma_callback(ma_device *pDevice, void *pOutput, const void *pInput,
+                 ma_uint32 frameCount)
+{
+    callback((void *)pInput, frameCount);
+    (void)pOutput;
+    (void)pDevice;
 }
 
 void plug_init()
@@ -345,7 +358,7 @@ void plug_update()
         if (p->capturing) {
             if (p->microphone != NULL) {
                 if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_M)) {
-                    uninit_capture_device(p->microphone);
+                    ma_device_uninit(p->microphone);
                     p->microphone = NULL;
                     p->capturing = false;
                 }
@@ -406,10 +419,33 @@ void plug_update()
 
             if (IsKeyPressed(KEY_M)) {
                 // TODO: let the user choose their mic
-                p->microphone = init_default_capture_device(callback);
+
+                ma_device_config deviceConfig =
+                    ma_device_config_init(ma_device_type_capture);
+                deviceConfig.capture.format = ma_format_f32;
+                deviceConfig.capture.channels = 2;
+                deviceConfig.sampleRate = 44100;
+                deviceConfig.dataCallback = ma_callback;
+                deviceConfig.pUserData = NULL;
+
+                p->microphone = malloc(sizeof(ma_device));
+                assert(p->microphone != NULL && "Buy more RAM!!");
+                ma_result result =
+                    ma_device_init(NULL, &deviceConfig, p->microphone);
+                if (result != MA_SUCCESS) {
+                    TraceLog(
+                        LOG_ERROR,
+                        "MINIAUDIO: Failed to initialize capture device: %s",
+                        ma_result_description(result));
+                }
+
                 if (p->microphone != NULL) {
-                    if (!start_capture_device(p->microphone)) {
-                        uninit_capture_device(p->microphone);
+                    ma_result result = ma_device_start(p->microphone);
+                    if (result != MA_SUCCESS) {
+                        TraceLog(LOG_ERROR,
+                                 "MINIAUDIO: Failed to start device: %s",
+                                 ma_result_description(result));
+                        ma_device_uninit(p->microphone);
                         p->microphone = NULL;
                     }
                 }
@@ -498,6 +534,7 @@ void plug_update()
             position.y = (float)h / 2 - size.y / 2 + fontSize;
             DrawTextEx(p->font, label, position, fontSize, 0, color);
         } else { // FFMPEG process is going
+            // TODO: introduce a rendering mode that perfectly loops the video
             if ((p->wave_cursor >= p->wave.frameCount && fft_settled()) ||
                 IsKeyPressed(KEY_ESCAPE)) {
                 if (!ffmpeg_end_rendering(p->ffmpeg)) {
