@@ -20,6 +20,24 @@
 #define RENDER_WIDTH  (16 * RENDER_FACTOR)
 #define RENDER_HEIGHT (9 * RENDER_FACTOR)
 
+// Microsoft could not update their parser OMEGALUL:
+// https://learn.microsoft.com/en-us/cpp/c-runtime-library/complex-math-support?view=msvc-170#types-used-in-complex-math
+#ifdef _MSC_VER
+#define Float_Complex _Fcomplex
+#define cfromreal(re) _FCbuild(re, 0)
+#define cfromimag(im) _FCbuild(0, im)
+#define mulcc         _FCmulcc
+#define addcc(a, b)   _FCbuild(crealf(a) + crealf(b), cimagf(a) + cimagf(b))
+#define subcc(a, b)   _FCbuild(crealf(a) - crealf(b), cimagf(a) - cimagf(b))
+#else
+#define Float_Complex float complex
+#define cfromreal(re) (re)
+#define cfromimag(im) ((im)
+#define mulcc(a, b) ((a) * (b))
+#define addcc(a, b) ((a) + (b))
+#define subcc(a, b) ((a) - (b))
+#endif
+
 typedef struct {
     // visualizer
     char *file_path;
@@ -41,7 +59,7 @@ typedef struct {
     // FFT analyzer
     float in_raw[N];
     float in_win[N];
-    float complex out_raw[N];
+    Float_Complex out_raw[N];
     float out_log[N];
     float out_smooth[N];
     float out_smear[N];
@@ -75,13 +93,13 @@ void fft_clean()
     memset(p->out_smear, 0, sizeof(p->out_smear));
 }
 
-void fft(float in[], size_t stride, float complex out[], size_t n)
+void fft(float in[], size_t stride, Float_Complex out[], size_t n)
 {
 
     assert(n > 0);
 
     if (n == 1) {
-        out[0] = in[0];
+        out[0] = cfromreal(in[0]);
         return;
     }
 
@@ -91,14 +109,14 @@ void fft(float in[], size_t stride, float complex out[], size_t n)
 
     for (size_t k = 0; k < n / 2; ++k) {
         float t = (float)k / n; // normalized
-        float complex v = cexp(-2 * I * PI * t) * out[k + n / 2];
-        float complex e = out[k];
-        out[k] = e + v;
-        out[k + n / 2] = e - v;
+        Float_Complex v = cexp(-2 * I * PI * t) * out[k + n / 2];
+        Float_Complex e = out[k];
+        out[k] = addcc(e, v);
+        out[k + n / 2] = subcc(e, v);
     }
 }
 
-static inline float amp(float complex z)
+static inline float amp(Float_Complex z)
 {
     float a = crealf(z);
     float b = cimagf(z);
@@ -310,11 +328,15 @@ void fft_render(size_t w, size_t h, size_t m)
 void plug_update()
 {
 
-    // TODO: FIXME: bug with raylib pre-5.0 (prolly to propagate the
-    // phys./logical screen size from X/windows?)
-    int w = RENDER_WIDTH;  // GetRenderWidth();
-    int h = RENDER_HEIGHT; // GetRenderHeight();
-    // end // TODO
+    // if Apple Retina, ensure FLAG_WINDOW_HIGHDPI is set before InitWindow()
+    // FIXME: 2023-11-14 still an issue with raylib 5.0 dev
+#ifdef __APPLE__
+    int w = 960;
+    int h = 540;
+#else
+    int w = GetRenderWidth();
+    int h = GetRenderHeight();
+#endif
 
     BeginDrawing();
     ClearBackground(GetColor(0x151515FF));
@@ -362,6 +384,7 @@ void plug_update()
                     p->file_path = strdup(droppedFiles.paths[0]);
 
                     if (IsMusicReady(p->music)) {
+                        // next line missing in the original version?
                         DetachAudioStreamProcessor(p->music.stream, callback);
                         StopMusicStream(p->music);
                         UnloadMusicStream(p->music);
@@ -469,7 +492,7 @@ void plug_update()
             DrawTextEx(p->font, label, position, fontSize, 0, color);
 
             label = "(Press ESC to Continue)";
-            fontSize = p->font.baseSize / 2;
+            fontSize = p->font.baseSize * 2 / 3;
             size = MeasureTextEx(p->font, label, fontSize, 0);
             position.x = (float)w / 2 - size.x / 2;
             position.y = (float)h / 2 - size.y / 2 + fontSize;
@@ -531,11 +554,10 @@ void plug_update()
                 // rendering
                 size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
                 // https://cdecl.org/?q=float+%28*fs%29%5B2%5D
-                float(*fs)[p->wave.channels] = (void *)p->wave_samples;
-
+                float *fs = (float *)p->wave_samples;
                 for (size_t i = 0; i < chunk_size; ++i) {
                     if (p->wave_cursor < p->wave.frameCount) {
-                        fft_push(fs[p->wave_cursor][0]);
+                        fft_push(fs[p->wave_cursor * p->wave.channels + 0]);
                     } else {
                         fft_push(0);
                     }

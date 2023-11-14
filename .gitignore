@@ -12,9 +12,7 @@ nob
 nob.old
 nob.exe
 nob.exe.old
-# raylib source
-/raylib
-# zig build (coming soon)
+# zig build
 zig-out/
 zig-cache/
 # tests

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+cc -o nob nob.c && echo "nob has been compiled."
+echo "The rest of this file is for testing only."
+echo "Run \`./nob config -r && ./nob build\`"
+exit 0;
+
 set -xe
 
 : "${DISABLE_WINDOWS_COMPILE:=true}"

@@ -27,7 +27,12 @@ int main()
     if (!reload_libplug())
         return 1;
 
+#ifdef __APPLE__
+    SetConfigFlags(FLAG_WINDOW_HIGHDPI);
+    // SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE);
+#else
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+#endif
     size_t factor = 60;
     InitWindow(factor * 16, factor * 9, "Musicalizer");
     SetTargetFPS(60);

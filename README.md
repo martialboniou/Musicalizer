@@ -15,26 +15,37 @@ About dylib
 ===========
 
 For now, the **hot reloading** works while compiling the dynamic library
-properly (no need to `codesign` by the way; try `./nob config -h && ./nob build`).
+properly (no need to `codesign` by the way). Here's the command to configure
+and compile (notice that the first line is required the very first time
+only and `-r` for the configuration stands for **r**eloading):
+
+```sh
+cc -o nob nob.c
+./nob config -r && ./nob build
+```
+
 For example:
 - change the `exec.sh` path to the audio file (`flac` is only available if
-you build `raylib` with the flag `SUPPORT_FILEFORMAT_FLAC`)
+  you build `raylib` with the flag `SUPPORT_FILEFORMAT_FLAC`)
 - run the program with `exec.sh` (and let it run!)
-- edit `src/plug.c` (say, change the color of a text element) 
-- run `./nob config -h && ./nob build` (to recompile the dynamic library; even
+- edit `src/plug.c` (say, change the color of a text element)
+- change the last number (AKA patch) in the file `VERSION` (otherwise, the
+  OS will use the same *cached* `libplug.dylib`
+- run `./nob config -r && ./nob build` (to recompile the dynamic library; even
   if in this case, it'll recompile and link the program too; you also can run
   `make.sh` instead; if `nob` doesn't exist at the root of this project,
   just execute: `cc -o nob nob.c`)
 - switch back on the Musicalizer window
 - type the `h` key as set on a QWERTY layout (`d` on Dvorak)
-it will load the newest version of the plugin (and thus, change the color if
-you did so in `src/plug.c`)
+  it will load the newest version of the plugin (and thus, change the color if
+  you did so in `src/plug.c`)
 
 About GLES (not required)
 =========================
 
 As OpenGL is deprecated, and Metal is way faster, you might have to compile
-`raylib` for the web platform GL ES in order to enable the **shaders** on macOS;
+`raylib` (with the complete source code) for the web platform GL ES in order
+to enable the **shaders** on macOS;
 the linkage will be made in the `./make.sh`; you just need a Google Chrome
 installed or the libaries `libEGL.dylib` and `libGLESv2.dylib` manually
 installed in the `./build` directory: check
@@ -144,11 +155,12 @@ you need to install `ffmpeg.exe` (check [this version](https://www.gyan.dev/ffmp
 
 The current implementation works with `ffmpeg.exe` in `./build/ffmpeg/bin/`.
 
-RayLib
-------
+RayLib (obsolete)
+-----------------
 
-Download [this archive](https://github.com/raysan5/raylib/releases/download/4.6-dev/raylib-4.6-dev_win64_mingw-w64.zip) first.
-Unzip and put the content in `./build/raylib-windows`
+RayLib is included in the code and can be compiled with windows. Before that,
+you had to download [this archive](https://github.com/raysan5/raylib/releases/download/4.6-dev/raylib-4.6-dev_win64_mingw-w64.zip)
+and unzip to `./build/raylib-windows`.
 
 Cross-compilation
 -----------------
@@ -213,7 +225,7 @@ You won't need to compile this file again. Run `./nob` with some options
 on your system (here, macOS):
 
 ```sh
-./nob config -h
+./nob config -r
 ./nob build
 ./exec.sh
 ```
@@ -236,6 +248,5 @@ Note that the `-ObjC` flag must be added to compile `rglfw` on macOS.
 ```sh
 git clone https://github.com/raysan5/raylib
 ./nob config && ./nob build
-./nob config -h && ./nob build
+./nob config -r && ./nob build
 ```
-
