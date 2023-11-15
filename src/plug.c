@@ -14,6 +14,8 @@
 #define MA_NO_RUNTIME_LINKING
 #endif // __APPLE__
 #include "miniaudio.h"
+#define NOB_IMPLEMENTATION
+#include "nob.h"
 
 #define GLSL_VERSION  330
 
@@ -44,14 +46,24 @@
 #endif
 
 typedef struct {
-    // visualizer
     char *file_path;
     Music music;
+} Sample;
+
+typedef struct {
+    Sample *items;
+    size_t count;
+    size_t capacity;
+} Samples;
+
+typedef struct {
+    // visualizer
+    Samples samples;
+    int current_sample;
     Font font;
     Shader circle;
     int circle_radius_location;
     int circle_power_location;
-    bool error;
 
     // renderer
     bool rendering;
@@ -217,15 +229,15 @@ void plug_init()
     p->circle_power_location = GetShaderLocation(p->circle, "power");
 
     p->screen = LoadRenderTexture(RENDER_WIDTH, RENDER_HEIGHT);
-
-    p->error = false;
+    p->current_sample = -1;
 }
 
 /** TODO: returns Plug* as last track: unused for now */
 Plug *plug_pre_reload(void)
 {
-    if (IsMusicReady(p->music)) {
-        DetachAudioStreamProcessor(p->music.stream, callback);
+    for (size_t i = 0; i < p->samples.count; ++i) {
+        Sample *it = &p->samples.items[i];
+        DetachAudioStreamProcessor(it->music.stream, callback);
     }
     return p;
 }
@@ -233,14 +245,24 @@ Plug *plug_pre_reload(void)
 void plug_post_reload(Plug *prev)
 {
     p = prev;
-    if (IsMusicReady(p->music)) {
-        AttachAudioStreamProcessor(p->music.stream, callback);
+    for (size_t i = 0; i < p->samples.count; ++i) {
+        Sample *it = &p->samples.items[i];
+        AttachAudioStreamProcessor(it->music.stream, callback);
     }
     UnloadShader(p->circle);
     p->circle = LoadShader(
         NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
     p->circle_radius_location = GetShaderLocation(p->circle, "radius");
     p->circle_power_location = GetShaderLocation(p->circle, "power");
+}
+
+Sample *current_sample()
+{
+    if (0 <= p->current_sample &&
+        (size_t)p->current_sample < p->samples.count) {
+        return &p->samples.items[p->current_sample];
+    }
+    return NULL;
 }
 
 void fft_render(size_t w, size_t h, size_t m)
@@ -338,6 +360,12 @@ void fft_render(size_t w, size_t h, size_t m)
     EndShaderMode();
 }
 
+void error_load_file_popup()
+{
+    // TODO: implement annoying popup that indicates we could not load file
+    TraceLog(LOG_ERROR, "Could not load file");
+}
+
 void plug_update()
 {
 
@@ -391,27 +419,30 @@ void plug_update()
         } else {
             if (IsFileDropped()) {
                 FilePathList droppedFiles = LoadDroppedFiles();
-                // for (size_t i = 0; i < droppedFiles.count; ++i) {
-                if (droppedFiles.count > 0) {
-                    free(p->file_path);
-                    p->file_path = strdup(droppedFiles.paths[0]);
+                for (size_t i = 0; i < droppedFiles.count; ++i) {
+                    char *file_path = strdup(droppedFiles.paths[i]);
 
-                    if (IsMusicReady(p->music)) {
-                        // next line missing in the original version?
-                        DetachAudioStreamProcessor(p->music.stream, callback);
-                        StopMusicStream(p->music);
-                        UnloadMusicStream(p->music);
+                    Sample *sample = current_sample();
+                    if (sample) {
+                        StopMusicStream(sample->music);
                     }
 
-                    p->music = LoadMusicStream(p->file_path);
+                    // WIP
+                    Music music = LoadMusicStream(file_path);
 
-                    if (IsMusicReady(p->music)) {
-                        p->error = false;
-                        SetMusicVolume(p->music, 0.5f);
-                        AttachAudioStreamProcessor(p->music.stream, callback);
-                        PlayMusicStream(p->music);
+                    if (IsMusicReady(music)) {
+                        SetMusicVolume(music, 0.5f);
+                        AttachAudioStreamProcessor(music.stream, callback);
+                        PlayMusicStream(music);
+
+                        nob_da_append(&p->samples, (CLITERAL(Sample){
+                                                       .file_path = file_path,
+                                                       .music = music,
+                                                   }));
+                        p->current_sample = p->samples.count - 1;
                     } else {
-                        p->error = true;
+                        free(file_path);
+                        error_load_file_popup();
                     }
                 }
                 UnloadDroppedFiles(droppedFiles);
@@ -452,32 +483,34 @@ void plug_update()
                 p->capturing = true;
             }
 
-            if (IsMusicReady(p->music)) { // music loaded and ready
-                UpdateMusicStream(p->music);
+            Sample *sample = current_sample();
+            if (sample) { // music is loaded and ready
+                UpdateMusicStream(sample->music);
 
                 if (IsKeyPressed(KEY_SPACE)) {
-                    if (IsMusicStreamPlaying(p->music)) {
-                        PauseMusicStream(p->music);
+                    if (IsMusicStreamPlaying(sample->music)) {
+                        PauseMusicStream(sample->music);
                     } else {
-                        ResumeMusicStream(p->music);
+                        ResumeMusicStream(sample->music);
                     }
                 }
 
                 if (IsKeyPressed(KEY_Q)) {
-                    StopMusicStream(p->music);
-                    PlayMusicStream(p->music);
+                    StopMusicStream(sample->music);
+                    PlayMusicStream(sample->music);
                 }
 
                 if (IsKeyPressed(KEY_F)) {
-                    StopMusicStream(p->music);
+                    StopMusicStream(sample->music);
 
                     fft_clean();
-                    p->wave = LoadWave(p->file_path);
+                    // TODO: LoadWave is pretty slow on big files
+                    p->wave = LoadWave(sample->file_path);
                     p->wave_cursor = 0;
                     p->wave_samples = LoadWaveSamples(p->wave);
                     p->ffmpeg = ffmpeg_start_rendering(
                         p->screen.texture.width, p->screen.texture.height,
-                        RENDER_FPS, p->file_path);
+                        RENDER_FPS, sample->file_path);
                     p->rendering = true;
                     SetTraceLogLevel(LOG_WARNING);
                 }
@@ -487,15 +520,8 @@ void plug_update()
 
             } else { // waiting for the user to DnD some tracks...
 
-                const char *label;
-                Color color;
-                if (p->error) {
-                    label = "Could not load file";
-                    color = RED;
-                } else {
-                    label = "Drag&Drop Music Here";
-                    color = WHITE;
-                }
+                const char *label = "Drag&Drop Music Here";
+                Color color = WHITE;
                 Vector2 size =
                     MeasureTextEx(p->font, label, p->font.baseSize, 0);
                 Vector2 position = {
@@ -505,8 +531,14 @@ void plug_update()
                 DrawTextEx(p->font, label, position, p->font.baseSize, 0,
                            color);
             }
+
+            DrawTextEx(p->font,
+                       TextFormat("Samples loaded: %zu", p->samples.count),
+                       CLITERAL(Vector2){0}, 64, 0, WHITE);
         }
-    } else {                     // rendering mode
+    } else { // rendering mode
+        Sample *sample = current_sample();
+        NOB_ASSERT(sample != NULL);
         if (p->ffmpeg == NULL) { // starting FFMPEG process has failed
             if (IsKeyPressed(KEY_ESCAPE)) {
                 SetTraceLogLevel(LOG_INFO);
@@ -514,7 +546,7 @@ void plug_update()
                 UnloadWaveSamples(p->wave_samples);
                 p->rendering = false;
                 fft_clean();
-                PlayMusicStream(p->music);
+                PlayMusicStream(sample->music);
             }
 
             const char *label = "FFmpeg Failure: Check the Logs";
@@ -545,7 +577,7 @@ void plug_update()
                     UnloadWaveSamples(p->wave_samples);
                     p->rendering = false;
                     fft_clean();
-                    PlayMusicStream(p->music);
+                    PlayMusicStream(sample->music);
                 }
             } else { // rendering...
 
