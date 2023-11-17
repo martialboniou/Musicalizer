@@ -265,11 +265,11 @@ Sample *current_sample()
     return NULL;
 }
 
-void fft_render(size_t w, size_t h, size_t m)
+void fft_render(Rectangle boundary, size_t m)
 {
 
     // width of a single bar
-    float cell_width = (float)w / m;
+    float cell_width = (float)boundary.width / m;
 
     // global color parameters
     float saturation = 0.75f;
@@ -281,12 +281,12 @@ void fft_render(size_t w, size_t h, size_t m)
         float hue = (float)i / m;
         Color color = ColorFromHSV(hue * 360, saturation, value);
         Vector2 startPos = {
-            i * cell_width + cell_width / 2,
-            h - (float)h * 2 / 3 * t,
+            boundary.x + i * cell_width + cell_width / 2,
+            boundary.y + boundary.height - (float)boundary.height * 2 / 3 * t,
         };
         Vector2 endPos = {
-            i * cell_width + cell_width / 2,
-            h,
+            boundary.x + i * cell_width + cell_width / 2,
+            boundary.y + boundary.height,
         };
         float thick = cell_width / 3 * sqrtf(t);
         DrawLineEx(startPos, endPos, thick, color);
@@ -307,12 +307,13 @@ void fft_render(size_t w, size_t h, size_t m)
         float hue = (float)i / m;
         Color color = ColorFromHSV(hue * 360, saturation, value);
         Vector2 startPos = {
-            i * cell_width + cell_width / 2,
-            h - (float)h * 2 / 3 * start,
+            boundary.x + i * cell_width + cell_width / 2,
+            boundary.y + boundary.height -
+                (float)boundary.height * 2 / 3 * start,
         };
         Vector2 endPos = {
-            i * cell_width + cell_width / 2,
-            h - (float)h * 2 / 3 * end,
+            boundary.x + i * cell_width + cell_width / 2,
+            boundary.y + boundary.height - (float)boundary.height * 2 / 3 * end,
         };
         float radius = cell_width * 3 * sqrtf(end);
         Vector2 origin = {0};
@@ -347,8 +348,8 @@ void fft_render(size_t w, size_t h, size_t m)
         float hue = (float)i / m;
         Color color = ColorFromHSV(hue * 360, saturation, value);
         Vector2 center = {
-            i * cell_width + cell_width / 2,
-            h - (float)h * 2 / 3 * t,
+            boundary.x + i * cell_width + cell_width / 2,
+            boundary.y + boundary.height - (float)boundary.height * 2 / 3 * t,
         };
         float radius = cell_width * 6 * sqrtf(t);
         Vector2 position = {
@@ -392,7 +393,7 @@ void plug_update()
                 }
 
                 size_t m = fft_analyze(GetFrameTime());
-                fft_render(w, h, m);
+                fft_render(CLITERAL(Rectangle){0, 0, w, h}, m);
             } else {
                 if (IsKeyPressed(KEY_ESCAPE)) {
                     p->capturing = false;
@@ -427,7 +428,6 @@ void plug_update()
                         StopMusicStream(sample->music);
                     }
 
-                    // WIP
                     Music music = LoadMusicStream(file_path);
 
                     if (IsMusicReady(music)) {
@@ -515,8 +515,50 @@ void plug_update()
                     SetTraceLogLevel(LOG_WARNING);
                 }
 
+                float panel_height = h * 0.25;
+                Rectangle preview_boundary = {0, 0, w, h - panel_height};
+
                 size_t m = fft_analyze(GetFrameTime());
-                fft_render(w, h, m);
+                fft_render(preview_boundary, m);
+
+                static float panel_scroll = 0;
+                static float panel_velocity = 0;
+                panel_velocity *= 0.9;
+                panel_velocity += GetMouseWheelMove()*panel_height*4;
+                panel_scroll += panel_velocity * GetFrameTime();
+                Rectangle panel_boundary = {
+.x = panel_scroll,
+.y = preview_boundary.height,
+.width = w,
+.height = panel_height
+                };
+                float panel_padding = panel_height * 0.1;
+
+                for (size_t i = 0; i < p->samples.count; ++i) {
+                    Rectangle item_boundary = {
+                        .x =
+                            i * panel_height + panel_boundary.x + panel_padding,
+                        .y = panel_boundary.y + panel_padding,
+                        .width = panel_height - panel_padding * 2,
+                        .height = panel_height - panel_padding * 2};
+                    if ((int)i != p->current_sample) {
+                        if (CheckCollisionPointRec(GetMousePosition(),
+                                                   item_boundary)) {
+                            DrawRectangleRec(item_boundary, RED);
+                            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                                Sample *sample = current_sample();
+                                if (sample)
+                                    StopMusicStream(sample->music);
+                                PlayMusicStream(p->samples.items[i].music);
+                                p->current_sample = i;
+                            }
+                        } else {
+                            DrawRectangleRec(item_boundary, WHITE);
+                        };
+                    } else {
+                        DrawRectangleRec(item_boundary, BLUE);
+                    }
+                }
 
             } else { // waiting for the user to DnD some tracks...
 
@@ -637,7 +679,8 @@ void plug_update()
 
                 BeginTextureMode(p->screen);
                 ClearBackground(GetColor(0x151515FF));
-                fft_render(p->screen.texture.width, p->screen.texture.height,
+                fft_render(CLITERAL(Rectangle){0, 0, p->screen.texture.width,
+                                               p->screen.texture.height},
                            m);
                 EndTextureMode();
 
