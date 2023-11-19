@@ -228,6 +228,8 @@ int is_path1_modified_after_path2(const char *path1, const char *path2);
 bool nob_rename(const char *old_path, const char *new_path);
 int nob_needs_rebuild(const char *output_path, const char **input_paths,
                       size_t input_paths_count);
+int nob_needs_rebuild1(const char *output_path, const char *input_path);
+int nob_file_exists(const char *file_path);
 
 // TODO: add MingGW support for Go Rebuild Urself™ Technology
 // clang-format off
@@ -992,6 +994,11 @@ int nob_needs_rebuild(const char *output_path, const char **input_paths,
 #endif
 }
 
+int nob_needs_rebuild1(const char *output_path, const char *input_path)
+{
+    return nob_needs_rebuild(output_path, &input_path, 1);
+}
+
 bool nob_rename(const char *old_path, const char *new_path)
 {
     nob_log(NOB_INFO, "renaming %s -> %s", old_path, new_path);
@@ -1107,6 +1114,29 @@ bool nob_sv_eq(Nob_String_View a, Nob_String_View b)
     } else {
         return memcmp(a.data, b.data, a.count) == 0;
     }
+}
+
+// RETURNS:
+//  0 - file does not exists
+//  1 - file exists
+// -1 - error while checking if file exists. The error is logged
+int nob_file_exists(const char *file_path)
+{
+#if _WIN32
+    // TODO: distinguish between "does not exists" and other errors
+    DWORD dwAttrib = GetFileAttributesA(file_path);
+    return dwAttrib != INVALID_FILE_ATTRIBUTES;
+#else
+    struct stat statbuf;
+    if (stat(file_path, &statbuf) < 0) {
+        if (errno == ENOENT)
+            return 0;
+        nob_log(NOB_ERROR, "Could not check if file %s exists: %s", file_path,
+                strerror(errno));
+        return -1;
+    }
+    return 1;
+#endif
 }
 
 // minirent.h SOURCE BEGIN ////////////////////////////////////////

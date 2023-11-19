@@ -6,6 +6,8 @@ Intro
 =====
 
 This version is aimed to work on macOS (for now; tested on 13+ and 14.1+).
+The macOS dynamic library version works (don't touch the file named VERSION,
+it is required).
 The shared library version is untested (I'll check on Linux later; I recommend
 to check the original version [here](https://github.com/tsoding/musializer)).
 

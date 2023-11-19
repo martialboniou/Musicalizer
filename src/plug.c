@@ -34,12 +34,15 @@
 #define COLOR_TRACK_BUTTON_BACKGROUND ColorBrightness(COLOR_BACKGROUND, 0.15)
 #define COLOR_TRACK_BUTTON_HOVEROVER                                           \
     ColorBrightness(COLOR_TRACK_BUTTON_BACKGROUND, 0.15)
-#define COLOR_TRACK_BUTTON_SELECTED        COLOR_ACCENT
-#define COLOR_TIMELINE_CURSOR              COLOR_ACCENT
-#define COLOR_TIMELINE_BACKGROUND          ColorBrightness(COLOR_BACKGROUND, -0.3)
-#define COLOR_FULLSCREEN_BUTTON_BACKGROUND COLOR_TRACK_BUTTON_BACKGROUND
-#define COLOR_FULLSCREEN_BUTTON_HOVEROVER  COLOR_TRACK_BUTTON_HOVEROVER
-#define FULLSCREEN_TIMER_SECS              1.0f
+#define COLOR_TRACK_BUTTON_SELECTED COLOR_ACCENT
+#define COLOR_TIMELINE_CURSOR       COLOR_ACCENT
+#define COLOR_TIMELINE_BACKGROUND   ColorBrightness(COLOR_BACKGROUND, -0.3)
+#define COLOR_HUD_BUTTON_BACKGROUND COLOR_TRACK_BUTTON_BACKGROUND
+#define COLOR_HUD_BUTTON_HOVEROVER  COLOR_TRACK_BUTTON_HOVEROVER
+#define HUD_TIMER_SECS              1.0f
+#define HUD_BUTTON_SIZE             50
+#define HUD_BUTTON_MARGIN           50
+#define HUD_ICON_SCALE              0.5
 
 // Microsoft could not update their parser OMEGALUL:
 // https://learn.microsoft.com/en-us/cpp/c-runtime-library/complex-math-support?view=msvc-170#types-used-in-complex-math
@@ -334,6 +337,9 @@ void plug_init()
 
     p->screen = LoadRenderTexture(RENDER_WIDTH, RENDER_HEIGHT);
     p->current_track = -1;
+
+    // TODO: restore master config between sessions
+    SetMasterVolume(0.5);
 }
 
 /** TODO: returns Plug* as last track: unused for now */
@@ -609,48 +615,33 @@ void tracks_panel(Rectangle panel_boundary)
     EndScissorMode();
 }
 
-void fullscreen_button(Rectangle preview_boundary)
+typedef enum {
+    BS_NONE = 0,      // 00
+    BS_HOVEROVER = 1, // 01
+    BS_CLICKED = 2,   // 10
+} Button_State;
+
+int fullscreen_button(Rectangle preview_boundary)
 {
     Vector2 mouse = GetMousePosition();
 
-    float fullscreen_button_size = 50;
-    float fullscreen_button_margin = 50;
-
     Rectangle fullscreen_button_boundary = {
-        preview_boundary.x + preview_boundary.width - fullscreen_button_size -
-            fullscreen_button_margin,
-        preview_boundary.y + fullscreen_button_margin,
-        fullscreen_button_size,
-        fullscreen_button_size,
+        preview_boundary.x + preview_boundary.width - HUD_BUTTON_SIZE -
+            HUD_BUTTON_MARGIN,
+        preview_boundary.y + HUD_BUTTON_MARGIN,
+        HUD_BUTTON_SIZE,
+        HUD_BUTTON_SIZE,
     };
 
-    bool hoverover = CheckCollisionPointRec(mouse, fullscreen_button_boundary);
-    if (hoverover) {
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            p->fullscreen = !p->fullscreen;
-        }
-    }
+    int hoverover = CheckCollisionPointRec(mouse, fullscreen_button_boundary);
+    int clicked = hoverover && IsMouseButtonReleased(MOUSE_BUTTON_LEFT);
 
-    if (p->fullscreen && !hoverover) {
-        static float fullscreen_timer = FULLSCREEN_TIMER_SECS;
+    Color color =
+        hoverover ? COLOR_HUD_BUTTON_HOVEROVER : COLOR_HUD_BUTTON_BACKGROUND;
 
-        if (Vector2Length(GetMouseDelta()) > 0.0) {
-            fullscreen_timer = FULLSCREEN_TIMER_SECS;
-        }
-
-        if (fullscreen_timer <= 0.0) {
-            return;
-        }
-
-        fullscreen_timer -= GetFrameTime();
-    }
-
-    Color color = hoverover ? COLOR_FULLSCREEN_BUTTON_HOVEROVER
-                            : COLOR_FULLSCREEN_BUTTON_BACKGROUND;
-
-    float icon_size = 380;
     DrawRectangleRounded(fullscreen_button_boundary, 0.5, 20, color);
-    float scale = fullscreen_button_size / icon_size * 0.6;
+    float icon_size = 380;
+    float scale = HUD_BUTTON_SIZE / icon_size * HUD_ICON_SCALE;
     Rectangle dest = {
         fullscreen_button_boundary.x + fullscreen_button_boundary.width / 2 -
             icon_size * scale / 2,
@@ -675,6 +666,112 @@ void fullscreen_button(Rectangle preview_boundary)
     DrawTexturePro(assets_texture("./resources/icons/fullscreen.png"), source,
                    dest, CLITERAL(Vector2){0}, 0,
                    ColorBrightness(WHITE, -0.10));
+
+    return (clicked << 1) | hoverover;
+}
+
+void horz_slider(Rectangle boundary, float *value, bool *dragging)
+{
+    Vector2 mouse = GetMousePosition();
+
+    Vector2 startPos = {
+        .x = boundary.x + boundary.height / 2,
+        .y = boundary.y + boundary.height / 2,
+    };
+    Vector2 endPos = {
+        .x = boundary.x + boundary.width - boundary.height / 2,
+        .y = boundary.y + boundary.height / 2,
+    };
+    Color color = WHITE;
+    DrawLineEx(startPos, endPos, boundary.height * 0.10, color);
+    Vector2 center = {
+        .x = startPos.x + (endPos.x - startPos.x) * (*value),
+        .y = startPos.y,
+    };
+    float radius = boundary.height / 4;
+    DrawCircleV(center, radius, color);
+
+    int hoverover = CheckCollisionPointCircle(mouse, center, radius);
+
+    if (!*dragging) {
+        if (hoverover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            *dragging = true;
+        }
+    } else {
+        float x = mouse.x;
+        if (x < startPos.x)
+            x = startPos.x;
+        if (x > endPos.x)
+            x = endPos.x;
+        x -= startPos.x;
+        x /= endPos.x - startPos.x;
+        *value = x;
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            *dragging = false;
+        }
+    }
+}
+
+void volume_slider(Rectangle preview_boundary)
+{
+    Vector2 mouse = GetMousePosition();
+
+    static int expanded = false;
+    static bool dragging = false;
+
+    Rectangle volume_slider_boundary = {
+        preview_boundary.x + HUD_BUTTON_MARGIN,
+        preview_boundary.y + HUD_BUTTON_MARGIN,
+        HUD_BUTTON_SIZE,
+        HUD_BUTTON_SIZE,
+    };
+
+    size_t expanded_slots = 6;
+    if (expanded)
+        volume_slider_boundary.width = expanded_slots * HUD_BUTTON_SIZE;
+
+    expanded =
+        dragging || CheckCollisionPointRec(mouse, volume_slider_boundary);
+
+    Color color = COLOR_HUD_BUTTON_HOVEROVER;
+    DrawRectangleRounded(volume_slider_boundary, 0.5, 20, color);
+
+    float icon_size = 512;
+    float scale = HUD_BUTTON_SIZE / icon_size * HUD_ICON_SCALE;
+    Rectangle dest = {
+        volume_slider_boundary.x + HUD_BUTTON_SIZE / 2 - icon_size * scale / 2,
+        volume_slider_boundary.y + HUD_BUTTON_SIZE / 2 - icon_size * scale / 2,
+        icon_size * scale, icon_size * scale};
+
+    float volume = GetMasterVolume();
+
+    size_t icon_index;
+    if (volume <= 0) {
+        icon_index = 0;
+    } else {
+        icon_index = volume * 2.0f;
+        if (icon_index >= 2)
+            icon_index = 2;
+        icon_index += 1;
+    }
+
+    Rectangle source = {icon_size * icon_index, 0, icon_size, icon_size};
+
+    DrawTexturePro(assets_texture("./resources/icons/volume.png"), source, dest,
+                   CLITERAL(Vector2){0}, 0, ColorBrightness(WHITE, -0.10));
+
+    if (expanded) {
+        horz_slider(
+            CLITERAL(Rectangle){
+                .x = volume_slider_boundary.x + HUD_BUTTON_SIZE,
+                .y = volume_slider_boundary.y,
+                .width = (expanded_slots - 1) * HUD_BUTTON_SIZE,
+                .height = HUD_BUTTON_SIZE,
+            },
+            &volume, &dragging);
+        SetMasterVolume(volume);
+    }
 }
 
 void plug_update()
@@ -743,6 +840,7 @@ void plug_update()
 
                     if (IsMusicReady(music)) {
                         SetMusicVolume(music, 0.5f);
+
                         AttachAudioStreamProcessor(music.stream, callback);
                         PlayMusicStream(music);
 
@@ -836,7 +934,19 @@ void plug_update()
                     };
                     fft_render(preview_boundary, m);
 
-                    fullscreen_button(preview_boundary);
+                    static float hud_timer = HUD_TIMER_SECS;
+                    if (hud_timer > 0.0) {
+                        int state = fullscreen_button(preview_boundary);
+                        if (state & BS_CLICKED)
+                            p->fullscreen = !p->fullscreen;
+                        if (!(state & BS_HOVEROVER))
+                            hud_timer -= GetFrameTime();
+                        volume_slider(preview_boundary);
+                    }
+
+                    if (Vector2Length(GetMouseDelta()) > 0.0) {
+                        hud_timer = HUD_TIMER_SECS;
+                    }
                 } else {
                     float tracks_panel_width = w * 0.25;
                     float timeline_height = h * 0.20;
@@ -868,7 +978,10 @@ void plug_update()
                         },
                         track);
 
-                    fullscreen_button(preview_boundary);
+                    if (fullscreen_button(preview_boundary) & BS_CLICKED) {
+                        p->fullscreen = !p->fullscreen;
+                    }
+                    volume_slider(preview_boundary);
                 }
                 // p->fullscreen
 
