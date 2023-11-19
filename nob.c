@@ -479,10 +479,10 @@ bool build_main(Config config)
         }
         // rc
         cmd.count = 0;
-        nob_cmd_append(&cmd, "x86_64-w64-mingw32-windres");
+        nob_cmd_append(&cmd, "rc");
+        nob_cmd_append(&cmd, "/fo", "./build/musicalizer.res");
         nob_cmd_append(&cmd, "./src/musicalizer.rc");
-        nob_cmd_append(&cmd, "-O", "coff");
-        nob_cmd_append(&cmd, "-o", "./build/musicalizer.res");
+        // NOTE: do not change the order of commandline args to rc
 
         if (!nob_cmd_run_sync(cmd))
             nob_return_defer(false);

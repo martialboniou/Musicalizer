@@ -1,7 +1,6 @@
 #include "plug.h"
 #include "ffmpeg.h"
 #include "raylib.h"
-#include "raymath.h"
 #include <assert.h>
 #include <complex.h>
 #include <math.h>
@@ -488,7 +487,9 @@ static void tracks_panel(Rectangle panel_boundary)
     static float panel_scroll = 0;
     static float panel_velocity = 0;
     panel_velocity *= 0.9;
-    panel_velocity += GetMouseWheelMove() * item_size * 8;
+    if (CheckCollisionPointRec(mouse, panel_boundary)) {
+        panel_velocity += GetMouseWheelMove() * item_size * 8;
+    }
     panel_scroll -= panel_velocity * GetFrameTime();
 
     static bool scrolling = false;
@@ -523,7 +524,8 @@ static void tracks_panel(Rectangle panel_boundary)
         };
         Color color;
         if ((int)i != p->current_track) {
-            if (CheckCollisionPointRec(mouse, item_boundary)) {
+            if (CheckCollisionPointRec(mouse, panel_boundary) &&
+                CheckCollisionPointRec(mouse, item_boundary)) {
                 color = COLOR_TRACK_BUTTON_HOVEROVER;
                 if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
                     Track *track = current_track();
@@ -538,6 +540,7 @@ static void tracks_panel(Rectangle panel_boundary)
         } else {
             color = COLOR_TRACK_BUTTON_SELECTED;
         }
+        // TODO: enable MSAA so the rounded rectangles look better
         DrawRectangleRounded(item_boundary, 0.2, 20, color);
 
         const char *text = GetFileName(p->tracks.items[i].file_path);
@@ -553,6 +556,8 @@ static void tracks_panel(Rectangle panel_boundary)
         DrawTextEx(p->font, text, position, fontSize, 0, WHITE);
     }
 
+    // TODO: jump to specific place by clicking the scrollbar
+    // TODO: up and down clickable buttons on the scrollbar
     if (entire_scrollable_area > visible_area_size) {
         float t = visible_area_size / entire_scrollable_area;
         float q = panel_scroll / entire_scrollable_area;
@@ -637,6 +642,17 @@ static int fullscreen_button(Rectangle preview_boundary)
     return (clicked << 1) | hoverover;
 }
 
+static float slider_get_value(float x, float lo_x, float hi_x)
+{
+    if (x < lo_x)
+        x = lo_x;
+    if (x > hi_x)
+        x = hi_x;
+    x -= lo_x;
+    x /= hi_x - lo_x;
+    return x;
+}
+
 static void horz_slider(Rectangle boundary, float *value, bool *dragging)
 {
     Vector2 mouse = GetMousePosition();
@@ -656,24 +672,36 @@ static void horz_slider(Rectangle boundary, float *value, bool *dragging)
         .y = startPos.y,
     };
     float radius = boundary.height / 4;
-    // TODO: try to use the circle shader for horz_slider
-    DrawCircleV(center, radius, color);
-
-    int hoverover = CheckCollisionPointCircle(mouse, center, radius);
+    {
+        Texture2D texture = {rlGetTextureIdDefault(), 1, 1, 1,
+                             PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+        SetShaderValue(p->circle, p->circle_radius_location, (float[1]){0.43f},
+                       SHADER_UNIFORM_FLOAT);
+        SetShaderValue(p->circle, p->circle_power_location, (float[1]){2.0f},
+                       SHADER_UNIFORM_FLOAT);
+        BeginShaderMode(p->circle);
+        Rectangle source = {0, 0, 1, 1};
+        Rectangle dest = {center.x - radius, center.y - radius, radius * 2,
+                          radius * 2};
+        Vector2 origin = {0};
+        DrawTexturePro(texture, source, dest, origin, 0, color);
+        EndShaderMode();
+    }
 
     if (!*dragging) {
-        if (hoverover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            *dragging = true;
+        if (CheckCollisionPointCircle(mouse, center, radius)) {
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                *dragging = true;
+            }
+        } else {
+            if (CheckCollisionPointRec(mouse, boundary)) {
+                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                    *value = slider_get_value(mouse.x, startPos.x, endPos.x);
+                }
+            }
         }
     } else {
-        float x = mouse.x;
-        if (x < startPos.x)
-            x = startPos.x;
-        if (x > endPos.x)
-            x = endPos.x;
-        x -= startPos.x;
-        x /= endPos.x - startPos.x;
-        *value = x;
+        *value = slider_get_value(mouse.x, startPos.x, endPos.x);
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             *dragging = false;
@@ -687,13 +715,15 @@ static void volume_slider(Rectangle preview_boundary)
 
     static int expanded = false;
     static bool dragging = false;
+    static float saved_volume = 0.0f;
 
-    Rectangle volume_slider_boundary = {
+    Rectangle volume_icon_boundary = {
         preview_boundary.x + HUD_BUTTON_MARGIN,
         preview_boundary.y + HUD_BUTTON_MARGIN,
         HUD_BUTTON_SIZE,
         HUD_BUTTON_SIZE,
     };
+    Rectangle volume_slider_boundary = volume_icon_boundary;
 
     size_t expanded_slots = 6;
     if (expanded)
@@ -713,7 +743,6 @@ static void volume_slider(Rectangle preview_boundary)
                           icon_size * scale / 2,
                       icon_size * scale, icon_size * scale};
 
-    // TODO: toggle mute on clicking the icon
     // TODO: animate volume slider expansion
     float volume = GetMasterVolume();
 
@@ -744,7 +773,25 @@ static void volume_slider(Rectangle preview_boundary)
                 .height = HUD_BUTTON_SIZE,
             },
             &volume, &dragging);
+        float mouse_wheel_step = 0.05;
+        volume += GetMouseWheelMove() * mouse_wheel_step;
+        if (volume < 0)
+            volume = 0;
+        if (volume > 1)
+            volume = 1;
         SetMasterVolume(volume);
+    }
+
+    if (CheckCollisionPointRec(mouse, volume_icon_boundary)) {
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (volume > 0) {
+                saved_volume = volume;
+                volume = 0;
+            } else {
+                volume = saved_volume;
+            }
+            SetMasterVolume(volume);
+        }
     }
 }
 
@@ -884,7 +931,8 @@ static void preview_screen()
                 volume_slider(preview_boundary);
             }
 
-            if (Vector2Length(GetMouseDelta()) > 0.0) {
+            Vector2 delta = GetMouseDelta();
+            if (fabsf(delta.x) + fabsf(delta.y) > 0.0) {
                 hud_timer = HUD_TIMER_SECS;
             }
         } else {
@@ -1073,16 +1121,18 @@ void rendering_screen()
             DrawRectangleLinesEx(bar_box, 2, WHITE);
 
             // rendering
-            size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
-            // https://cdecl.org/?q=float+%28*fs%29%5B2%5D
-            float *fs = (float *)p->wave_samples;
-            for (size_t i = 0; i < chunk_size; ++i) {
-                if (p->wave_cursor < p->wave.frameCount) {
-                    fft_push(fs[p->wave_cursor * p->wave.channels + 0]);
-                } else {
-                    fft_push(0);
+            {
+                size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
+                // https://cdecl.org/?q=float+%28*fs%29%5B2%5D
+                float *fs = (float *)p->wave_samples;
+                for (size_t i = 0; i < chunk_size; ++i) {
+                    if (p->wave_cursor < p->wave.frameCount) {
+                        fft_push(fs[p->wave_cursor * p->wave.channels + 0]);
+                    } else {
+                        fft_push(0);
+                    }
+                    p->wave_cursor += 1;
                 }
-                p->wave_cursor += 1;
             }
 
             size_t m = fft_analyze(1.0f / RENDER_FPS);
@@ -1175,3 +1225,7 @@ void plug_update()
 
     EndDrawing();
 }
+
+// TODO: introduce the notion of active UI element to get rid of the bugs when
+// you're dragging something and unpress the mouse over another element and
+// accidentally activate it.
