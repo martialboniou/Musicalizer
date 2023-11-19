@@ -19,11 +19,13 @@ About dylib
 For now, the **hot reloading** works while compiling the dynamic library
 properly (no need to `codesign` by the way). Here's the command to configure
 and compile (notice that the first line is required the very first time
-only and `-r` for the configuration stands for **r**eloading):
+only; `-r` & `-m` for the configuration stands for **r**eloading &
+**m**icrophone capturing respectively; `./nob` starts with the `build` option
+by default):
 
 ```sh
 cc -o nob nob.c
-./nob config -r && ./nob build
+./nob config -r -m && ./nob
 ```
 
 For example:
@@ -33,7 +35,7 @@ For example:
 - edit `src/plug.c` (say, change the color of a text element)
 - change the last number (AKA patch) in the file `VERSION` (otherwise, the
   OS will use the same *cached* `libplug.dylib`
-- run `./nob config -r && ./nob build` (to recompile the dynamic library; even
+- run `./nob config -r -m && ./nob` (to recompile the dynamic library; even
   if in this case, it'll recompile and link the program too; you also can run
   `make.sh` instead; if `nob` doesn't exist at the root of this project,
   just execute: `cc -o nob nob.c`)
@@ -227,16 +229,16 @@ You won't need to compile this file again. Run `./nob` with some options
 on your system (here, macOS):
 
 ```sh
-./nob config -r
-./nob build
+./nob config -r -m
+./nob
 ./exec.sh
 ```
 
 You can build for windows (64-bit, btw!):
 
 ```sh
-./nob config -t win32
-./nob build
+./nob config -t win64-mingw
+./nob
 wine64 ./build/musicalizer.exe
 ```
 
@@ -249,6 +251,6 @@ Note that the `-ObjC` flag must be added to compile `rglfw` on macOS.
 
 ```sh
 git clone https://github.com/raysan5/raylib
-./nob config && ./nob build
-./nob config -r && ./nob build
+./nob config && ./nob
+./nob config -r -m && ./nob
 ```

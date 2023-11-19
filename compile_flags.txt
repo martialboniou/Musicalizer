@@ -11,4 +11,5 @@
 -I/opt/homebrew/include
 -DHOTRELOAD # fix an issue with clangd and macros
 -DNOB_IMPLEMENTATION
+-DFEATURE_MICROPHONE
 #-DNOB_REBUILD_URSELF

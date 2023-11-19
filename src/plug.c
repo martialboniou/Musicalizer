@@ -95,8 +95,8 @@ typedef struct {
     size_t capacity;
 } Textures;
 
-void *assoc_find_(void *items, size_t item_size, size_t items_count,
-                  size_t item_value_offset, const char *key)
+static void *assoc_find_(void *items, size_t item_size, size_t items_count,
+                         size_t item_value_offset, const char *key)
 {
     for (size_t i = 0; i < items_count; ++i) {
         char *item = (char *)items + i * item_size;
@@ -147,14 +147,16 @@ typedef struct {
     float out_smooth[N];
     float out_smear[N];
 
+#ifdef FEATURE_MICROPHONE
     // microphone
     ma_device *microphone;
     bool capturing;
+#endif // FEATURE_MICROPHONE
 } Plug;
 
-Plug *p = NULL;
+static Plug *p = NULL;
 
-Image assets_image(const char *file_path)
+static Image assets_image(const char *file_path)
 {
     Image *image = assoc_find(p->assets.images, file_path);
     if (image)
@@ -167,7 +169,7 @@ Image assets_image(const char *file_path)
     return item.value;
 }
 
-Texture assets_texture(const char *file_path)
+static Texture assets_texture(const char *file_path)
 {
     Texture *texture = assoc_find(p->assets.textures, file_path);
     if (texture)
@@ -177,12 +179,13 @@ Texture assets_texture(const char *file_path)
     Texture_Item item = {0};
     item.key = file_path;
     item.value = LoadTextureFromImage(image);
+    GenTextureMipmaps(&item.value);
     SetTextureFilter(item.value, TEXTURE_FILTER_BILINEAR);
     nob_da_append(&p->assets.textures, item);
     return item.value;
 }
 
-void assets_unload_everything(void)
+static void assets_unload_everything()
 {
     for (size_t i = 0; i < p->assets.textures.count; ++i) {
         UnloadTexture(p->assets.textures.items[i].value);
@@ -194,7 +197,7 @@ void assets_unload_everything(void)
     p->assets.images.count = 0;
 }
 
-bool fft_settled()
+static bool fft_settled()
 {
     float eps = 1e-3;
     for (size_t i = 0; i < N; ++i) {
@@ -206,7 +209,7 @@ bool fft_settled()
     return true;
 }
 
-void fft_clean()
+static void fft_clean()
 {
     memset(p->in_raw, 0, sizeof(p->in_raw));
     memset(p->in_win, 0, sizeof(p->in_win));
@@ -216,7 +219,7 @@ void fft_clean()
     memset(p->out_smear, 0, sizeof(p->out_smear));
 }
 
-void fft(float in[], size_t stride, Float_Complex out[], size_t n)
+static void fft(float in[], size_t stride, Float_Complex out[], size_t n)
 {
 
     assert(n > 0);
@@ -246,7 +249,7 @@ static inline float amp(Float_Complex z)
     return logf(a * a + b * b);
 }
 
-size_t fft_analyze(float dt)
+static size_t fft_analyze(float dt)
 {
 
     // Hann function to smoothen the input (it enhances the output)
@@ -295,13 +298,13 @@ size_t fft_analyze(float dt)
     return m;
 }
 
-void fft_push(float frame)
+static void fft_push(float frame)
 {
     memmove(p->in_raw, p->in_raw + 1, (N - 1) * sizeof(p->in_raw[0]));
     p->in_raw[N - 1] = frame;
 }
 
-void callback(void *bufferData, unsigned int frames)
+static void callback(void *bufferData, unsigned int frames)
 {
 
     // https://cdecl.org/?q=float+%28*fs%29%5B2%5D (ptr of array 2 of float)
@@ -312,62 +315,17 @@ void callback(void *bufferData, unsigned int frames)
     }
 }
 
-void ma_callback(ma_device *pDevice, void *pOutput, const void *pInput,
-                 ma_uint32 frameCount)
+#ifdef FEATURE_MICROPHONE
+static void ma_callback(ma_device *pDevice, void *pOutput, const void *pInput,
+                        ma_uint32 frameCount)
 {
     callback((void *)pInput, frameCount);
     (void)pOutput;
     (void)pDevice;
 }
+#endif // FEATURE_MICROPHONE
 
-void plug_init()
-{
-    p = malloc(sizeof(*p));
-    assert(p != NULL && "Upgrade your memory!!");
-    memset(p, 0, sizeof(*p)); // fill a block of memory
-
-    p->font = LoadFontEx("./resources/fonts/Alegreya-Regular.ttf", FONT_SIZE,
-                         NULL, 0);
-    SetTextureFilter(p->font.texture, TEXTURE_FILTER_BILINEAR);
-
-    p->circle = LoadShader(
-        NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
-    p->circle_radius_location = GetShaderLocation(p->circle, "radius");
-    p->circle_power_location = GetShaderLocation(p->circle, "power");
-
-    p->screen = LoadRenderTexture(RENDER_WIDTH, RENDER_HEIGHT);
-    p->current_track = -1;
-
-    // TODO: restore master config between sessions
-    SetMasterVolume(0.5);
-}
-
-/** TODO: returns Plug* as last track: unused for now */
-Plug *plug_pre_reload(void)
-{
-    for (size_t i = 0; i < p->tracks.count; ++i) {
-        Track *it = &p->tracks.items[i];
-        DetachAudioStreamProcessor(it->music.stream, callback);
-    }
-    assets_unload_everything();
-    return p;
-}
-
-void plug_post_reload(Plug *prev)
-{
-    p = prev;
-    for (size_t i = 0; i < p->tracks.count; ++i) {
-        Track *it = &p->tracks.items[i];
-        AttachAudioStreamProcessor(it->music.stream, callback);
-    }
-    UnloadShader(p->circle);
-    p->circle = LoadShader(
-        NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
-    p->circle_radius_location = GetShaderLocation(p->circle, "radius");
-    p->circle_power_location = GetShaderLocation(p->circle, "power");
-}
-
-Track *current_track()
+static Track *current_track()
 {
     if (0 <= p->current_track && (size_t)p->current_track < p->tracks.count) {
         return &p->tracks.items[p->current_track];
@@ -375,7 +333,7 @@ Track *current_track()
     return NULL;
 }
 
-void fft_render(Rectangle boundary, size_t m)
+static void fft_render(Rectangle boundary, size_t m)
 {
 
     // width of a single bar
@@ -471,19 +429,27 @@ void fft_render(Rectangle boundary, size_t m)
     EndShaderMode();
 }
 
-void error_load_file_popup()
+static void error_load_file_popup()
 {
     // TODO: implement annoying popup that indicates we could not load file
     TraceLog(LOG_ERROR, "Could not load file");
 }
 
-void timeline(Rectangle timeline_boundary, Track *track)
+// if Apple Retina, ensure FLAG_WINDOW_HIGHDPI is set before
+// InitWindow()
+// FIXME: 2023-11-14 still an issue with raylib 5.0 dev
+static void timeline(Rectangle timeline_boundary, Track *track)
 {
     DrawRectangleRec(timeline_boundary, COLOR_TIMELINE_BACKGROUND);
 
     float played = GetMusicTimePlayed(track->music);
     float len = GetMusicTimeLength(track->music);
-    float x = played / len * GetRenderWidth();
+#ifdef __APPLE__
+    int w = 960;
+#else
+    int w = GetRenderWidth();
+#endif
+    float x = played / len * w;
     Vector2 startPos = {
         .x = x,
         .y = timeline_boundary.y,
@@ -507,13 +473,14 @@ void timeline(Rectangle timeline_boundary, Track *track)
     // TODO: visualize sound wave on the timeline
 }
 
-void tracks_panel(Rectangle panel_boundary)
+static void tracks_panel(Rectangle panel_boundary)
 {
     DrawRectangleRec(panel_boundary, COLOR_TRACK_PANEL_BACKGROUND);
 
     Vector2 mouse = GetMousePosition();
 
     float scroll_bar_width = panel_boundary.width * 0.03;
+    // TODO: don't scale item_size relative to the panel width
     float item_size = panel_boundary.width * 0.2;
     float visible_area_size = panel_boundary.height;
     float entire_scrollable_area = item_size * p->tracks.count;
@@ -621,7 +588,7 @@ typedef enum {
     BS_CLICKED = 2,   // 10
 } Button_State;
 
-int fullscreen_button(Rectangle preview_boundary)
+static int fullscreen_button(Rectangle preview_boundary)
 {
     Vector2 mouse = GetMousePosition();
 
@@ -640,7 +607,7 @@ int fullscreen_button(Rectangle preview_boundary)
         hoverover ? COLOR_HUD_BUTTON_HOVEROVER : COLOR_HUD_BUTTON_BACKGROUND;
 
     DrawRectangleRounded(fullscreen_button_boundary, 0.5, 20, color);
-    float icon_size = 380;
+    float icon_size = 512;
     float scale = HUD_BUTTON_SIZE / icon_size * HUD_ICON_SCALE;
     Rectangle dest = {
         fullscreen_button_boundary.x + fullscreen_button_boundary.width / 2 -
@@ -670,7 +637,7 @@ int fullscreen_button(Rectangle preview_boundary)
     return (clicked << 1) | hoverover;
 }
 
-void horz_slider(Rectangle boundary, float *value, bool *dragging)
+static void horz_slider(Rectangle boundary, float *value, bool *dragging)
 {
     Vector2 mouse = GetMousePosition();
 
@@ -689,6 +656,7 @@ void horz_slider(Rectangle boundary, float *value, bool *dragging)
         .y = startPos.y,
     };
     float radius = boundary.height / 4;
+    // TODO: try to use the circle shader for horz_slider
     DrawCircleV(center, radius, color);
 
     int hoverover = CheckCollisionPointCircle(mouse, center, radius);
@@ -713,7 +681,7 @@ void horz_slider(Rectangle boundary, float *value, bool *dragging)
     }
 }
 
-void volume_slider(Rectangle preview_boundary)
+static void volume_slider(Rectangle preview_boundary)
 {
     Vector2 mouse = GetMousePosition();
 
@@ -739,20 +707,26 @@ void volume_slider(Rectangle preview_boundary)
 
     float icon_size = 512;
     float scale = HUD_BUTTON_SIZE / icon_size * HUD_ICON_SCALE;
-    Rectangle dest = {
-        volume_slider_boundary.x + HUD_BUTTON_SIZE / 2 - icon_size * scale / 2,
-        volume_slider_boundary.y + HUD_BUTTON_SIZE / 2 - icon_size * scale / 2,
-        icon_size * scale, icon_size * scale};
+    Rectangle dest = {volume_slider_boundary.x + (float)HUD_BUTTON_SIZE / 2 -
+                          icon_size * scale / 2,
+                      volume_slider_boundary.y + (float)HUD_BUTTON_SIZE / 2 -
+                          icon_size * scale / 2,
+                      icon_size * scale, icon_size * scale};
 
+    // TODO: toggle mute on clicking the icon
+    // TODO: animate volume slider expansion
     float volume = GetMasterVolume();
 
     size_t icon_index;
     if (volume <= 0) {
         icon_index = 0;
     } else {
-        icon_index = volume * 2.0f;
-        if (icon_index >= 2)
-            icon_index = 2;
+        size_t phases = 2;
+        icon_index = volume * phases;
+
+        if (icon_index >= phases)
+            icon_index = phases - 1;
+        ;
         icon_index += 1;
     }
 
@@ -774,9 +748,8 @@ void volume_slider(Rectangle preview_boundary)
     }
 }
 
-void plug_update()
+static void preview_screen()
 {
-
     // if Apple Retina, ensure FLAG_WINDOW_HIGHDPI is set before
     // InitWindow()
     // FIXME: 2023-11-14 still an issue with raylib 5.0 dev
@@ -788,222 +761,271 @@ void plug_update()
     int h = GetRenderHeight();
 #endif
 
-    BeginDrawing();
-    ClearBackground(COLOR_BACKGROUND);
-
-    if (!p->rendering) { // preview mode
-        if (p->capturing) {
-            if (p->microphone != NULL) {
-                if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_M)) {
-                    ma_device_uninit(p->microphone);
-                    p->microphone = NULL;
-                    p->capturing = false;
-                }
-
-                size_t m = fft_analyze(GetFrameTime());
-                fft_render(CLITERAL(Rectangle){0, 0, w, h}, m);
-            } else {
-                if (IsKeyPressed(KEY_ESCAPE)) {
-                    p->capturing = false;
-                }
-
-                const char *label = "Capture Device Error: Check the Logs";
-                Color color = RED;
-                int fontSize = p->font.baseSize;
-                Vector2 size = MeasureTextEx(p->font, label, fontSize, 0);
-                Vector2 position = {
-                    (float)w / 2 - size.x / 2,
-                    (float)h / 2 - size.y / 2,
-                };
-                DrawTextEx(p->font, label, position, fontSize, 0, color);
-
-                label = "(Press ESC to continue)";
-                fontSize = p->font.baseSize * 2 / 3;
-                size = MeasureTextEx(p->font, label, fontSize, 0);
-                position.x = (float)w / 2 - size.x / 2;
-                position.x = (float)w / 2 - size.x / 2;
-                DrawTextEx(p->font, label, position, fontSize, 0, color);
-            }
-
-        } else {
-            if (IsFileDropped()) {
-                FilePathList droppedFiles = LoadDroppedFiles();
-                for (size_t i = 0; i < droppedFiles.count; ++i) {
-                    char *file_path = strdup(droppedFiles.paths[i]);
-
-                    Track *track = current_track();
-                    if (track) {
-                        StopMusicStream(track->music);
-                    }
-
-                    Music music = LoadMusicStream(file_path);
-
-                    if (IsMusicReady(music)) {
-                        SetMusicVolume(music, 0.5f);
-
-                        AttachAudioStreamProcessor(music.stream, callback);
-                        PlayMusicStream(music);
-
-                        nob_da_append(&p->tracks, (CLITERAL(Track){
-                                                      .file_path = file_path,
-                                                      .music = music,
-                                                  }));
-                        p->current_track = p->tracks.count - 1;
-                    } else {
-                        free(file_path);
-                        error_load_file_popup();
-                    }
-                }
-                UnloadDroppedFiles(droppedFiles);
-            }
-
-            if (IsKeyPressed(KEY_M)) {
-                // TODO: let the user choose their mic
-
-                ma_device_config deviceConfig =
-                    ma_device_config_init(ma_device_type_capture);
-                deviceConfig.capture.format = ma_format_f32;
-                deviceConfig.capture.channels = 2;
-                deviceConfig.sampleRate = 44100;
-                deviceConfig.dataCallback = ma_callback;
-                deviceConfig.pUserData = NULL;
-
-                p->microphone = malloc(sizeof(ma_device));
-                assert(p->microphone != NULL && "Buy more RAM!!");
-                ma_result result =
-                    ma_device_init(NULL, &deviceConfig, p->microphone);
-                if (result != MA_SUCCESS) {
-                    TraceLog(LOG_ERROR,
-                             "MINIAUDIO: Failed to initialize capture "
-                             "device: %s",
-                             ma_result_description(result));
-                }
-
-                if (p->microphone != NULL) {
-                    ma_result result = ma_device_start(p->microphone);
-                    if (result != MA_SUCCESS) {
-                        TraceLog(LOG_ERROR,
-                                 "MINIAUDIO: Failed to start device: %s",
-                                 ma_result_description(result));
-                        ma_device_uninit(p->microphone);
-                        p->microphone = NULL;
-                    }
-                }
-                p->capturing = true;
-            }
+    if (IsFileDropped()) {
+        FilePathList droppedFiles = LoadDroppedFiles();
+        for (size_t i = 0; i < droppedFiles.count; ++i) {
+            char *file_path = strdup(droppedFiles.paths[i]);
 
             Track *track = current_track();
-            if (track) { // music is loaded and ready
-                UpdateMusicStream(track->music);
+            if (track)
+                StopMusicStream(track->music);
 
-                if (IsKeyPressed(KEY_SPACE)) {
-                    if (IsMusicStreamPlaying(track->music)) {
-                        PauseMusicStream(track->music);
-                    } else {
-                        ResumeMusicStream(track->music);
-                    }
-                }
+            Music music = LoadMusicStream(file_path);
 
-                if (IsKeyPressed(KEY_R)) {
-                    StopMusicStream(track->music);
+            if (IsMusicReady(music)) {
 
-                    fft_clean();
-                    // TODO: LoadWave is pretty slow on big files
-                    p->wave = LoadWave(track->file_path);
-                    p->wave_cursor = 0;
-                    p->wave_samples = LoadWaveSamples(p->wave);
-                    p->ffmpeg = ffmpeg_start_rendering(
-                        p->screen.texture.width, p->screen.texture.height,
-                        RENDER_FPS, track->file_path);
-                    p->rendering = true;
-                    SetTraceLogLevel(LOG_WARNING);
-                }
+                AttachAudioStreamProcessor(music.stream, callback);
+                PlayMusicStream(music);
 
-                if (IsKeyPressed(KEY_F)) {
-                    p->fullscreen = !p->fullscreen;
-                }
-
-                size_t m = fft_analyze(GetFrameTime());
-
-                if (p->fullscreen) {
-                    Rectangle preview_boundary = {
-                        .x = 0,
-                        .y = 0,
-                        .width = w,
-                        .height = h,
-                    };
-                    fft_render(preview_boundary, m);
-
-                    static float hud_timer = HUD_TIMER_SECS;
-                    if (hud_timer > 0.0) {
-                        int state = fullscreen_button(preview_boundary);
-                        if (state & BS_CLICKED)
-                            p->fullscreen = !p->fullscreen;
-                        if (!(state & BS_HOVEROVER))
-                            hud_timer -= GetFrameTime();
-                        volume_slider(preview_boundary);
-                    }
-
-                    if (Vector2Length(GetMouseDelta()) > 0.0) {
-                        hud_timer = HUD_TIMER_SECS;
-                    }
-                } else {
-                    float tracks_panel_width = w * 0.25;
-                    float timeline_height = h * 0.20;
-                    Rectangle preview_boundary = {
-                        .x = tracks_panel_width,
-                        .y = 0,
-                        .width = w - tracks_panel_width,
-                        .height = h - timeline_height};
-
-                    BeginScissorMode(preview_boundary.x, preview_boundary.y,
-                                     preview_boundary.width,
-                                     preview_boundary.height);
-                    fft_render(preview_boundary, m);
-                    EndScissorMode();
-
-                    tracks_panel(CLITERAL(Rectangle){
-                        .x = 0,
-                        .y = 0,
-                        .width = tracks_panel_width,
-                        .height = preview_boundary.height,
-                    });
-
-                    timeline(
-                        CLITERAL(Rectangle){
-                            .x = 0,
-                            .y = preview_boundary.height,
-                            .width = w,
-                            .height = timeline_height,
-                        },
-                        track);
-
-                    if (fullscreen_button(preview_boundary) & BS_CLICKED) {
-                        p->fullscreen = !p->fullscreen;
-                    }
-                    volume_slider(preview_boundary);
-                }
-                // p->fullscreen
-
-            } else { // waiting for the user to DnD some tracks...
-
-                const char *label = "Drag&Drop Music Here";
-                Color color = WHITE;
-                Vector2 size =
-                    MeasureTextEx(p->font, label, p->font.baseSize, 0);
-                Vector2 position = {
-                    (float)w / 2 - size.x / 2,
-                    (float)h / 2 - size.y / 2,
-                };
-                DrawTextEx(p->font, label, position, p->font.baseSize, 0,
-                           color);
+                nob_da_append(&p->tracks, (CLITERAL(Track){
+                                              .file_path = file_path,
+                                              .music = music,
+                                          }));
+                p->current_track = p->tracks.count - 1;
+            } else {
+                free(file_path);
+                error_load_file_popup();
             }
         }
-    } else { // rendering mode
-        Track *track = current_track();
-        NOB_ASSERT(track != NULL);
-        if (p->ffmpeg == NULL) { // starting FFMPEG process has failed
-            if (IsKeyPressed(KEY_ESCAPE)) {
+        UnloadDroppedFiles(droppedFiles);
+    }
+
+#ifdef FEATURE_MICROPHONE
+    if (IsKeyPressed(KEY_M)) {
+        // TODO: let the user choose their mic
+
+        ma_device_config deviceConfig =
+            ma_device_config_init(ma_device_type_capture);
+        deviceConfig.capture.format = ma_format_f32;
+        deviceConfig.capture.channels = 2;
+        deviceConfig.sampleRate = 44100;
+        deviceConfig.dataCallback = ma_callback;
+        deviceConfig.pUserData = NULL;
+
+        p->microphone = malloc(sizeof(ma_device));
+        assert(p->microphone != NULL && "Buy more RAM!!");
+        ma_result result = ma_device_init(NULL, &deviceConfig, p->microphone);
+        if (result != MA_SUCCESS) {
+            TraceLog(LOG_ERROR,
+                     "MINIAUDIO: Failed to initialize capture "
+                     "device: %s",
+                     ma_result_description(result));
+        }
+
+        if (p->microphone != NULL) {
+            ma_result result = ma_device_start(p->microphone);
+            if (result != MA_SUCCESS) {
+                TraceLog(LOG_ERROR, "MINIAUDIO: Failed to start device: %s",
+                         ma_result_description(result));
+                ma_device_uninit(p->microphone);
+                p->microphone = NULL;
+            }
+        }
+        p->capturing = true;
+    }
+#endif // FEATURE_MICROPHONE
+
+    Track *track = current_track();
+    if (track) { // music is loaded and ready
+        UpdateMusicStream(track->music);
+
+        if (IsKeyPressed(KEY_SPACE)) {
+            if (IsMusicStreamPlaying(track->music)) {
+                PauseMusicStream(track->music);
+            } else {
+                ResumeMusicStream(track->music);
+            }
+        }
+
+        if (IsKeyPressed(KEY_R)) {
+            StopMusicStream(track->music);
+
+            fft_clean();
+            // TODO: LoadWave is pretty slow on big files
+            p->wave = LoadWave(track->file_path);
+            p->wave_cursor = 0;
+            p->wave_samples = LoadWaveSamples(p->wave);
+            p->ffmpeg = ffmpeg_start_rendering(p->screen.texture.width,
+                                               p->screen.texture.height,
+                                               RENDER_FPS, track->file_path);
+            p->rendering = true;
+            SetTraceLogLevel(LOG_WARNING);
+        }
+
+        if (IsKeyPressed(KEY_F)) {
+            p->fullscreen = !p->fullscreen;
+        }
+
+        // TODO: add button to start rendering
+        // TODO: add tooltips to all the buttons that describe their
+        // function and associated keyboard shortcuts
+
+        size_t m = fft_analyze(GetFrameTime());
+
+        if (p->fullscreen) {
+            Rectangle preview_boundary = {
+                .x = 0,
+                .y = 0,
+                .width = w,
+                .height = h,
+            };
+            fft_render(preview_boundary, m);
+
+            static float hud_timer = HUD_TIMER_SECS;
+            if (hud_timer > 0.0) {
+                int state = fullscreen_button(preview_boundary);
+                if (state & BS_CLICKED)
+                    p->fullscreen = !p->fullscreen;
+                if (!(state & BS_HOVEROVER))
+                    hud_timer -= GetFrameTime();
+                // TODO: the state of volume slider does not reset
+                // hud_timer
+
+                volume_slider(preview_boundary);
+            }
+
+            if (Vector2Length(GetMouseDelta()) > 0.0) {
+                hud_timer = HUD_TIMER_SECS;
+            }
+        } else {
+            float tracks_panel_width = w * 0.25;
+            float timeline_height = h * 0.20;
+            Rectangle preview_boundary = {.x = tracks_panel_width,
+                                          .y = 0,
+                                          .width = w - tracks_panel_width,
+                                          .height = h - timeline_height};
+
+            BeginScissorMode(preview_boundary.x, preview_boundary.y,
+                             preview_boundary.width, preview_boundary.height);
+            fft_render(preview_boundary, m);
+            EndScissorMode();
+
+            tracks_panel(CLITERAL(Rectangle){
+                .x = 0,
+                .y = 0,
+                .width = tracks_panel_width,
+                .height = preview_boundary.height,
+            });
+
+            timeline(
+                CLITERAL(Rectangle){
+                    .x = 0,
+                    .y = preview_boundary.height,
+                    .width = w,
+                    .height = timeline_height,
+                },
+                track);
+
+            if (fullscreen_button(preview_boundary) & BS_CLICKED) {
+                p->fullscreen = !p->fullscreen;
+            }
+            volume_slider(preview_boundary);
+        }
+
+    } else { // waiting for the user to DnD some tracks...
+
+        const char *label = "Drag&Drop Music Here";
+        Color color = WHITE;
+        Vector2 size = MeasureTextEx(p->font, label, p->font.baseSize, 0);
+        Vector2 position = {
+            (float)w / 2 - size.x / 2,
+            (float)h / 2 - size.y / 2,
+        };
+        DrawTextEx(p->font, label, position, p->font.baseSize, 0, color);
+    }
+}
+
+#ifdef FEATURE_MICROPHONE
+static void capture_screen()
+{
+#ifdef __APPLE__
+    int w = 960;
+    int h = 540;
+#else
+    int w = GetRenderWidth();
+    int h = GetRenderHeight();
+#endif
+
+    if (p->microphone != NULL) {
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_M)) {
+            ma_device_uninit(p->microphone);
+            p->microphone = NULL;
+            p->capturing = false;
+        }
+
+        size_t m = fft_analyze(GetFrameTime());
+        fft_render(CLITERAL(Rectangle){0, 0, w, h}, m);
+    } else {
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            p->capturing = false;
+        }
+
+        const char *label = "Capture Device Error: Check the Logs";
+        Color color = RED;
+        int fontSize = p->font.baseSize;
+        Vector2 size = MeasureTextEx(p->font, label, fontSize, 0);
+        Vector2 position = {
+            (float)w / 2 - size.x / 2,
+            (float)h / 2 - size.y / 2,
+        };
+        DrawTextEx(p->font, label, position, fontSize, 0, color);
+
+        label = "(Press ESC to continue)";
+        fontSize = p->font.baseSize * 2 / 3;
+        size = MeasureTextEx(p->font, label, fontSize, 0);
+        position.x = (float)w / 2 - size.x / 2;
+        position.x = (float)w / 2 - size.x / 2;
+        DrawTextEx(p->font, label, position, fontSize, 0, color);
+    }
+}
+#endif // FEATURE_MICROPHONE
+
+void rendering_screen()
+{
+#ifdef __APPLE__
+    int w = 960;
+    int h = 540;
+#else
+    int w = GetRenderWidth();
+    int h = GetRenderHeight();
+#endif
+
+    Track *track = current_track();
+    NOB_ASSERT(track != NULL);
+    if (p->ffmpeg == NULL) { // starting FFMPEG process has failed
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            SetTraceLogLevel(LOG_INFO);
+            UnloadWave(p->wave);
+            UnloadWaveSamples(p->wave_samples);
+            p->rendering = false;
+            fft_clean();
+            PlayMusicStream(track->music);
+        }
+
+        const char *label = "FFmpeg Failure: Check the Logs";
+        Color color = RED;
+        int fontSize = p->font.baseSize;
+        Vector2 size = MeasureTextEx(p->font, label, fontSize, 0);
+        Vector2 position = {
+            (float)w / 2 - size.x / 2,
+            (float)h / 2 - size.y / 2,
+        };
+        DrawTextEx(p->font, label, position, fontSize, 0, color);
+
+        label = "(Press ESC to Continue)";
+        fontSize = p->font.baseSize * 2 / 3;
+        size = MeasureTextEx(p->font, label, fontSize, 0);
+        position.x = (float)w / 2 - size.x / 2;
+        position.y = (float)h / 2 - size.y / 2 + fontSize;
+        DrawTextEx(p->font, label, position, fontSize, 0, color);
+    } else { // FFMPEG process is going
+        // TODO: introduce a rendering mode that perfectly loops the
+        // video
+        if ((p->wave_cursor >= p->wave.frameCount && fft_settled()) ||
+            IsKeyPressed(KEY_ESCAPE)) {
+            if (!ffmpeg_end_rendering(p->ffmpeg)) {
+                p->ffmpeg = NULL;
+            } else {
                 SetTraceLogLevel(LOG_INFO);
                 UnloadWave(p->wave);
                 UnloadWaveSamples(p->wave_samples);
@@ -1011,111 +1033,144 @@ void plug_update()
                 fft_clean();
                 PlayMusicStream(track->music);
             }
+        } else { // rendering...
 
-            const char *label = "FFmpeg Failure: Check the Logs";
-            Color color = RED;
-            int fontSize = p->font.baseSize;
-            Vector2 size = MeasureTextEx(p->font, label, fontSize, 0);
+            // label
+            const char *label = "Rendering video...";
+            Color color = WHITE;
+
+            Vector2 size = MeasureTextEx(p->font, label, p->font.baseSize, 0);
             Vector2 position = {
                 (float)w / 2 - size.x / 2,
                 (float)h / 2 - size.y / 2,
             };
-            DrawTextEx(p->font, label, position, fontSize, 0, color);
+            DrawTextEx(p->font, label, position, p->font.baseSize, 0, color);
 
-            label = "(Press ESC to Continue)";
-            fontSize = p->font.baseSize * 2 / 3;
-            size = MeasureTextEx(p->font, label, fontSize, 0);
-            position.x = (float)w / 2 - size.x / 2;
-            position.y = (float)h / 2 - size.y / 2 + fontSize;
-            DrawTextEx(p->font, label, position, fontSize, 0, color);
-        } else { // FFMPEG process is going
-            // TODO: introduce a rendering mode that perfectly loops the
-            // video
-            if ((p->wave_cursor >= p->wave.frameCount && fft_settled()) ||
-                IsKeyPressed(KEY_ESCAPE)) {
-                if (!ffmpeg_end_rendering(p->ffmpeg)) {
-                    p->ffmpeg = NULL;
+            // progress bar
+            float bar_width = (float)w * 2 / 3;
+            float bar_height = p->font.baseSize * 0.25;
+            float bar_progress = (float)p->wave_cursor / p->wave.frameCount;
+            float bar_padding_top = p->font.baseSize * 0.5;
+            if (bar_progress > 1)
+                bar_progress = 1;
+            float bar_x = (float)w / 2 - bar_width / 2;
+            float bar_y = (float)p->font.baseSize / 2 + bar_padding_top;
+
+            Rectangle bar_filling = {
+                .x = bar_x,
+                .y = bar_y,
+                .width = bar_width * bar_progress,
+                .height = bar_height,
+            };
+            DrawRectangleRec(bar_filling, WHITE);
+
+            Rectangle bar_box = {
+                .x = bar_x,
+                .y = bar_y,
+                .width = bar_width,
+                .height = bar_height,
+            };
+            DrawRectangleLinesEx(bar_box, 2, WHITE);
+
+            // rendering
+            size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
+            // https://cdecl.org/?q=float+%28*fs%29%5B2%5D
+            float *fs = (float *)p->wave_samples;
+            for (size_t i = 0; i < chunk_size; ++i) {
+                if (p->wave_cursor < p->wave.frameCount) {
+                    fft_push(fs[p->wave_cursor * p->wave.channels + 0]);
                 } else {
-                    SetTraceLogLevel(LOG_INFO);
-                    UnloadWave(p->wave);
-                    UnloadWaveSamples(p->wave_samples);
-                    p->rendering = false;
-                    fft_clean();
-                    PlayMusicStream(track->music);
+                    fft_push(0);
                 }
-            } else { // rendering...
-
-                // label
-                const char *label = "Rendering video...";
-                Color color = WHITE;
-
-                Vector2 size =
-                    MeasureTextEx(p->font, label, p->font.baseSize, 0);
-                Vector2 position = {
-                    (float)w / 2 - size.x / 2,
-                    (float)h / 2 - size.y / 2,
-                };
-                DrawTextEx(p->font, label, position, p->font.baseSize, 0,
-                           color);
-
-                // progress bar
-                float bar_width = (float)w * 2 / 3;
-                float bar_height = p->font.baseSize * 0.25;
-                float bar_progress = (float)p->wave_cursor / p->wave.frameCount;
-                float bar_padding_top = p->font.baseSize * 0.5;
-                if (bar_progress > 1)
-                    bar_progress = 1;
-                float bar_x = (float)w / 2 - bar_width / 2;
-                float bar_y = (float)p->font.baseSize / 2 + bar_padding_top;
-
-                Rectangle bar_filling = {
-                    .x = bar_x,
-                    .y = bar_y,
-                    .width = bar_width * bar_progress,
-                    .height = bar_height,
-                };
-                DrawRectangleRec(bar_filling, WHITE);
-
-                Rectangle bar_box = {
-                    .x = bar_x,
-                    .y = bar_y,
-                    .width = bar_width,
-                    .height = bar_height,
-                };
-                DrawRectangleLinesEx(bar_box, 2, WHITE);
-
-                // rendering
-                size_t chunk_size = p->wave.sampleRate / RENDER_FPS;
-                // https://cdecl.org/?q=float+%28*fs%29%5B2%5D
-                float *fs = (float *)p->wave_samples;
-                for (size_t i = 0; i < chunk_size; ++i) {
-                    if (p->wave_cursor < p->wave.frameCount) {
-                        fft_push(fs[p->wave_cursor * p->wave.channels + 0]);
-                    } else {
-                        fft_push(0);
-                    }
-                    p->wave_cursor += 1;
-                }
-
-                size_t m = fft_analyze(1.0f / RENDER_FPS);
-
-                BeginTextureMode(p->screen);
-                ClearBackground(COLOR_BACKGROUND);
-                fft_render(CLITERAL(Rectangle){0, 0, p->screen.texture.width,
-                                               p->screen.texture.height},
-                           m);
-                EndTextureMode();
-
-                Image image = LoadImageFromTexture(p->screen.texture);
-                if (!ffmpeg_send_frame_flipped(p->ffmpeg, image.data,
-                                               p->screen.texture.width,
-                                               p->screen.texture.height)) {
-                    ffmpeg_end_rendering(p->ffmpeg);
-                    p->ffmpeg = NULL;
-                }
-                UnloadImage(image);
+                p->wave_cursor += 1;
             }
+
+            size_t m = fft_analyze(1.0f / RENDER_FPS);
+
+            BeginTextureMode(p->screen);
+            ClearBackground(COLOR_BACKGROUND);
+            fft_render(CLITERAL(Rectangle){0, 0, p->screen.texture.width,
+                                           p->screen.texture.height},
+                       m);
+            EndTextureMode();
+
+            Image image = LoadImageFromTexture(p->screen.texture);
+            if (!ffmpeg_send_frame_flipped(p->ffmpeg, image.data,
+                                           p->screen.texture.width,
+                                           p->screen.texture.height)) {
+                ffmpeg_end_rendering(p->ffmpeg);
+                p->ffmpeg = NULL;
+            }
+            UnloadImage(image);
         }
+    }
+}
+
+void plug_init()
+{
+    p = malloc(sizeof(*p));
+    assert(p != NULL && "Upgrade your memory!!");
+    memset(p, 0, sizeof(*p)); // fill a block of memory
+
+    p->font = LoadFontEx("./resources/fonts/Alegreya-Regular.ttf", FONT_SIZE,
+                         NULL, 0);
+    GenTextureMipmaps(&p->font.texture);
+    SetTextureFilter(p->font.texture, TEXTURE_FILTER_BILINEAR);
+
+    p->circle = LoadShader(
+        NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
+    p->circle_radius_location = GetShaderLocation(p->circle, "radius");
+    p->circle_power_location = GetShaderLocation(p->circle, "power");
+
+    p->screen = LoadRenderTexture(RENDER_WIDTH, RENDER_HEIGHT);
+    p->current_track = -1;
+
+    // TODO: restore master volume between sessions
+    SetMasterVolume(0.5);
+}
+
+Plug *plug_pre_reload()
+{
+    for (size_t i = 0; i < p->tracks.count; ++i) {
+        Track *it = &p->tracks.items[i];
+        DetachAudioStreamProcessor(it->music.stream, callback);
+    }
+    assets_unload_everything();
+    return p;
+}
+
+void plug_post_reload(Plug *prev)
+{
+    p = prev;
+    for (size_t i = 0; i < p->tracks.count; ++i) {
+        Track *it = &p->tracks.items[i];
+        AttachAudioStreamProcessor(it->music.stream, callback);
+    }
+    UnloadShader(p->circle);
+    p->circle = LoadShader(
+        NULL, TextFormat("./resources/shaders/glsl%d/circle.fs", GLSL_VERSION));
+    p->circle_radius_location = GetShaderLocation(p->circle, "radius");
+    p->circle_power_location = GetShaderLocation(p->circle, "power");
+}
+
+void plug_update()
+{
+
+    BeginDrawing();
+    ClearBackground(COLOR_BACKGROUND);
+
+    if (!p->rendering) {
+#ifdef FEATURE_MICROPHONE
+        if (p->capturing) {
+            capture_screen();
+        } else {
+            preview_screen();
+        }
+#else
+        preview_screen();
+#endif // FEATURE_MICROPHONE
+    } else {
+        rendering_screen();
     }
 
     EndDrawing();
